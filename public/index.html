@@ -276,6 +276,24 @@ textarea{resize:none;line-height:1.5;}
   </div>
 </div>
 
+
+<div id="s-role" class="screen">
+  <div class="center-wrap">
+    <div class="card" style="text-align:center;">
+      <p style="font-size:15px;color:#555;margin-bottom:4px;">Hola, <strong id="role-player-name">—</strong>.</p>
+      <p style="font-size:13px;color:#aaa;margin-bottom:24px;">El sistema te ha asignado un rol en la red:</p>
+      <div id="role-card" style="border-radius:14px;padding:28px 20px;margin-bottom:20px;text-align:center;">
+        <div id="role-type-tag" style="display:inline-block;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;margin-bottom:14px;"></div>
+        <div id="role-title" style="font-size:34px;font-weight:800;margin-bottom:12px;"></div>
+        <div id="role-desc" style="font-size:13px;line-height:1.7;color:#555;"></div>
+      </div>
+      <div id="role-team-badge" style="display:inline-block;font-size:12px;font-weight:700;padding:5px 18px;border-radius:20px;margin-bottom:20px;"></div>
+      <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:20px;color:#aaa;font-size:12px;"><div style="width:7px;height:7px;border-radius:50%;background:#4CAF50;animation:pulse 1.5s infinite;"></div>Esperando que los demas ingresen...</div>
+      <button class="btn btn-dark" onclick="goToLobby()">Ver sala de espera &rarr;</button>
+    </div>
+  </div>
+</div>
+
 <div id="s-lobby" class="screen">
   <div class="lobby-wrap">
     <div class="lobby-header">
@@ -421,7 +439,7 @@ textarea{resize:none;line-height:1.5;}
 </div>
 
 <script>
-const socket=io({transports:['polling'],reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:1000});
+const socket=io({transports:['polling'],reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:1500});
 let myId=null,myName='',myRole=null,myRoleLabel='',myTeam=null,myColor='#ddd',myTextColor='#333',myInitials='',isMod=false;
 let gs={},p1Timer=null,p1Time=30,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
 let emojiStr='',selNext=null,dashData=null,subRevealed=false;
@@ -441,6 +459,15 @@ function joinGame(asMod){
   socket.emit('join',{name,isModerator:asMod});
 }
 
+const ROLE_DESCS={
+  universidad:'Representas la institución académica. Tienes el compromiso formal, pero también la distancia del territorio.',
+  gobierno:'Representas la institucionalidad pública del territorio. Tienes poder de decisión, pero también de omisión.',
+  empresa:'Representas los intereses del sector productivo. Tu lógica es la eficiencia, tu riesgo es el greenwashing.',
+  org_civil:'Representas la sociedad organizada. Eres el puente entre la norma y la comunidad.',
+  comunidad:'Representas a quienes viven el territorio. Tu voz es la más legítima y la menos escuchada.'
+};
+const ROLE_TYPE={universidad:'Actor Institucional',gobierno:'Actor Territorial',empresa:'Actor Económico',org_civil:'Actor Social',comunidad:'Actor Comunitario'};
+
 socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor})=>{
   myId=id;
   if(isModerator){
@@ -449,16 +476,36 @@ socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor})=>{
     document.getElementById('wait-bar').classList.add('hidden');
   } else {
     myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;
-    showScreen('s-lobby');
-    setTimeout(()=>renderMyRoleBanner(),100);
+    showRoleScreen(role,roleLabel,team,color,textColor);
   }
   document.getElementById('lobby-url').textContent=window.location.host;
 });
 
-socket.on('connect',()=>{
-  if(myName){socket.emit('join',{name:myName,isModerator:isMod});}
+socket.on('reconnect',()=>{
+  if(myName) socket.emit('join',{name:myName,isModerator:isMod});
 });
 
+function showRoleScreen(role,roleLabel,team,color,textColor){
+  document.getElementById('role-player-name').textContent=myName;
+  const card=document.getElementById('role-card');
+  card.style.background=color+'22';
+  card.style.border='1.5px solid '+color+'88';
+  const tag=document.getElementById('role-type-tag');
+  tag.textContent=ROLE_TYPE[role]||'Actor';
+  tag.style.background='#f5ede0';tag.style.color='#7a4a1a';
+  const title=document.getElementById('role-title');
+  title.textContent=roleLabel;title.style.color=textColor;
+  document.getElementById('role-desc').textContent=ROLE_DESCS[role]||'';
+  const badge=document.getElementById('role-team-badge');
+  badge.textContent='Equipo '+team;
+  badge.style.background=color+'33';badge.style.color=textColor;
+  showScreen('s-role');
+}
+
+function goToLobby(){
+  showScreen('s-lobby');
+  renderMyRoleBanner();
+}
 
 socket.on('lobbyUpdate',state=>{gs=state;updateLobby(state);});
 
