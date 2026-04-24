@@ -31,6 +31,32 @@ function loadGs() {
 process.on('uncaughtException', err => console.error('[CRASH]', err.message));
 process.on('unhandledRejection', r => console.error('[REJECT]', String(r)));
 
+// Vigilar cambios en el archivo de estado y notificar a clientes de este proceso
+let watchDebounce = null;
+function startFileWatcher() {
+  try {
+    fs.watch(STATE_FILE, (event) => {
+      if (event !== 'change') return;
+      clearTimeout(watchDebounce);
+      watchDebounce = setTimeout(() => {
+        const fresh = loadGs();
+        if (!fresh) return;
+        // Solo actualizar si el estado cambio (evitar loops)
+        const prevPhase = gs.phase;
+        const prevCount = Object.keys(gs.players||{}).length;
+        gs = fresh;
+        const newCount = Object.keys(gs.players||{}).length;
+        if (newCount !== prevCount || gs.phase !== prevPhase) {
+          if (io) io.emit('lobbyUpdate', publicState());
+        }
+      }, 150);
+    });
+    console.log('[WATCH] Vigilando', STATE_FILE);
+  } catch(e) {
+    console.log('[WATCH] No se pudo vigilar archivo:', e.message);
+  }
+}
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -440,16 +466,21 @@ io.on('connection', socket => {
   });
 
   socket.on('disconnect', () => {
-    const p=gs.players[socket.id];
-    if(p){
-      delete gs.players[socket.id];
-      gs.teamA=gs.teamA.filter(id=>id!==socket.id);
-      gs.teamB=gs.teamB.filter(id=>id!==socket.id);
-      saveGs();
-      io.emit('lobbyUpdate',publicState());
-    }
+    // Leer estado fresco del disco para no borrar un jugador que ya reconecto en otro proceso
+    const fresh = loadGs() || gs;
+    if (!fresh.players[socket.id]) return; // Socket ya fue reasignado, no borrar
+    gs = fresh;
+    delete gs.players[socket.id];
+    gs.teamA = gs.teamA.filter(id=>id!==socket.id);
+    gs.teamB = gs.teamB.filter(id=>id!==socket.id);
+    saveGs();
+    io.emit('lobbyUpdate', publicState());
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log('Desacople running on port', PORT));
+server.listen(PORT, () => {
+  console.log('Desacople running on port', PORT);
+  if (fs.existsSync(STATE_FILE)) startFileWatcher();
+  else { fs.writeFileSync(STATE_FILE, JSON.stringify(makeState())); startFileWatcher(); }
+});
