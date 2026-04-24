@@ -235,6 +235,26 @@ io.on('connection', socket => {
   console.log('connected:', socket.id);
 
   socket.on('join', ({ name, isModerator }) => {
+    // Si ya existe un jugador con ese nombre y equipo, reconectar en lugar de duplicar
+    const existing = Object.values(gs.players).find(p => p.name === name.trim() && p.isModerator === !!isModerator && p.id !== socket.id);
+    if (existing) {
+      // Reasignar el socket ID al jugador existente
+      gs.players[socket.id] = { ...existing, id: socket.id };
+      delete gs.players[existing.id];
+      gs.teamA = gs.teamA.map(id => id === existing.id ? socket.id : id);
+      gs.teamB = gs.teamB.map(id => id === existing.id ? socket.id : id);
+      if (gs.moderatorId === existing.id) gs.moderatorId = socket.id;
+      const p = gs.players[socket.id];
+      if (isModerator) {
+        socket.join('moderator');
+        socket.emit('joined', { id: socket.id, isModerator: true });
+      } else {
+        socket.join('team' + p.team);
+        socket.emit('joined', { id: socket.id, isModerator: false, role: p.role, roleLabel: p.roleLabel, team: p.team, color: p.color, textColor: p.textColor });
+      }
+      io.emit('lobbyUpdate', publicState());
+      return;
+    }
     const initials = name.trim().split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
     gs.players[socket.id] = { id:socket.id, name:name.trim(), initials, isModerator:!!isModerator, role:null, roleLabel:null, team:null, color:'#ddd', textColor:'#333' };
     if (isModerator) {
