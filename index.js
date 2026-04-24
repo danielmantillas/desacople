@@ -237,27 +237,22 @@ io.on('connection', socket => {
   socket.on('join', ({ name, isModerator }) => {
     const trimName = name.trim();
 
-    // --- Limpiar entradas del mismo socket si ya existía ---
+    // Eliminar entrada previa del mismo socket
     if (gs.players[socket.id]) {
-      const old = gs.players[socket.id];
       gs.teamA = gs.teamA.filter(id => id !== socket.id);
       gs.teamB = gs.teamB.filter(id => id !== socket.id);
       delete gs.players[socket.id];
     }
 
-    // --- Buscar si este nombre ya existe (de otra sesión) ---
-    const existingEntry = Object.entries(gs.players).find(
-      ([id, p]) => p.name === trimName && p.isModerator === !!isModerator
-    );
-
-    if (existingEntry) {
-      const [existingId, existingPlayer] = existingEntry;
-      // Reconexión: reasignar socket ID
-      gs.players[socket.id] = { ...existingPlayer, id: socket.id };
-      delete gs.players[existingId];
-      gs.teamA = gs.teamA.map(id => id === existingId ? socket.id : id);
-      gs.teamB = gs.teamB.map(id => id === existingId ? socket.id : id);
-      if (gs.moderatorId === existingId) gs.moderatorId = socket.id;
+    // Buscar reconexion por nombre
+    const prev = Object.entries(gs.players).find(([id,p]) => p.name === trimName && p.isModerator === !!isModerator);
+    if (prev) {
+      const [oldId, oldPlayer] = prev;
+      gs.players[socket.id] = { ...oldPlayer, id: socket.id };
+      delete gs.players[oldId];
+      gs.teamA = gs.teamA.map(id => id === oldId ? socket.id : id);
+      gs.teamB = gs.teamB.map(id => id === oldId ? socket.id : id);
+      if (gs.moderatorId === oldId) gs.moderatorId = socket.id;
       const p = gs.players[socket.id];
       if (isModerator) {
         socket.join('moderator');
@@ -266,34 +261,29 @@ io.on('connection', socket => {
         socket.join('team'+p.team);
         socket.emit('joined', { id:socket.id, isModerator:false, role:p.role, roleLabel:p.roleLabel, team:p.team, color:p.color, textColor:p.textColor });
       }
-      // Devolver al jugador a la fase actual
-      if (gs.phase === 'phase1') {
-        socket.emit('phaseChange', { phase:'phase1', state:publicState() });
-        socket.emit('p1:turnUpdate', { team:p.team, turn:p.team==='A'?gs.phase1.turnA:gs.phase1.turnB, wordIndex:p.team==='A'?gs.phase1.idxA:gs.phase1.idxB, scores:gs.scores });
-      } else if (gs.phase === 'phase2') {
-        socket.emit('phaseChange', { phase:'phase2', timeA:gs.phase2.timeA, timeB:gs.phase2.timeB, wordsA:gs.phase1.guessedA, wordsB:gs.phase1.guessedB });
-      } else if (gs.phase === 'phase3') {
-        socket.emit('phaseChange', { phase:'phase3', state:publicState(), wordsA:gs.phase3.wordsA, wordsB:gs.phase3.wordsB });
-        socket.emit('p3:update', { team:'A', story:gs.phase3.storyA, used:gs.phase3.usedA, graph:gs.phase3.graph, scores:gs.scores });
-        socket.emit('p3:update', { team:'B', story:gs.phase3.storyB, used:gs.phase3.usedB, graph:gs.phase3.graph, scores:gs.scores });
+      // Restaurar fase actual
+      const phase = gs.phase;
+      if (phase === 'lobby') {
+        socket.emit('restoreState', { phase:'lobby' });
+      } else if (phase === 'phase1') {
+        socket.emit('restoreState', { phase:'phase1', state:publicState(), scores:gs.scores });
+      } else if (phase === 'phase1Done' || phase === 'phase2') {
+        socket.emit('restoreState', { phase:'phase2', timeA:gs.phase2.timeA, timeB:gs.phase2.timeB, wordsA:gs.phase1.guessedA, wordsB:gs.phase1.guessedB });
+      } else if (phase === 'phase3') {
+        socket.emit('restoreState', { phase:'phase3', state:publicState(), wordsA:gs.phase3.wordsA, wordsB:gs.phase3.wordsB, storyA:gs.phase3.storyA, storyB:gs.phase3.storyB, usedA:gs.phase3.usedA, usedB:gs.phase3.usedB, graph:gs.phase3.graph, scores:gs.scores });
       }
       io.emit('lobbyUpdate', publicState());
-      console.log(trimName, 'reconectado en fase:', gs.phase);
+      console.log(trimName, 'reconectado, fase:', phase);
       return;
     }
 
-    // --- Nombre ya tomado por otro jugador distinto en lobby ---
+    // Nombre duplicado en lobby
     if (gs.phase === 'lobby') {
-      const nameTaken = Object.values(gs.players).some(
-        p => p.name === trimName && p.isModerator === !!isModerator
-      );
-      if (nameTaken) {
-        socket.emit('joinError', { msg: 'Ese nombre ya está en uso. Elige otro.' });
-        return;
-      }
+      const taken = Object.values(gs.players).some(p => p.name === trimName && p.isModerator === !!isModerator);
+      if (taken) { socket.emit('joinError', { msg:'Ese nombre ya esta en uso. Elige otro.' }); return; }
     }
 
-    // --- Nuevo jugador ---
+    // Nuevo jugador
     const initials = trimName.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
     gs.players[socket.id] = { id:socket.id, name:trimName, initials, isModerator:!!isModerator, role:null, roleLabel:null, team:null, color:'#ddd', textColor:'#333' };
     if (isModerator) {
@@ -307,7 +297,7 @@ io.on('connection', socket => {
       socket.emit('joined', { id:socket.id, isModerator:false, role:p.role, roleLabel:p.roleLabel, team:p.team, color:p.color, textColor:p.textColor });
     }
     io.emit('lobbyUpdate', publicState());
-    console.log(trimName, 'joined team:', gs.players[socket.id]?.team||'mod');
+    console.log(trimName, 'nuevo, equipo:', gs.players[socket.id]?.team||'mod');
   });
 
   socket.on('startGame', () => {
