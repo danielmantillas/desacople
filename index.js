@@ -1,23 +1,8 @@
 const express = require('express');
-const fs = require('fs');
 
-// ----- INSTANCIA UNICA: evita que PM2 corra multiples copias -----
-(function(){
-  const lock = __dirname + '/.lock';
-  try {
-    if (fs.existsSync(lock)) {
-      const pid = parseInt(fs.readFileSync(lock,'utf8'));
-      try { process.kill(pid, 0); console.log('Ya hay una instancia corriendo (PID '+pid+'). Saliendo.'); process.exit(0); } catch(e) {}
-    }
-    fs.writeFileSync(lock, String(process.pid));
-    const cleanup = () => { try{fs.unlinkSync(lock);}catch(e){} };
-    process.on('exit', cleanup); process.on('SIGTERM', ()=>{cleanup();process.exit(0);}); process.on('SIGINT', ()=>{cleanup();process.exit(0);});
-  } catch(e) { console.error('Lock error:', e.message); }
-})();
-
-// ----- CAPTURA DE ERRORES: evita crashes -----
+// Evitar crashes silenciosos
 process.on('uncaughtException', err => console.error('[ERROR]', err.message));
-process.on('unhandledRejection', reason => console.error('[REJECT]', reason));
+process.on('unhandledRejection', reason => console.error('[REJECT]', String(reason)));
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
@@ -255,13 +240,11 @@ io.on('connection', socket => {
 
   socket.on('join', ({ name, isModerator }) => {
     const trimName = name.trim();
-    // Limpiar mismo socket
     if (gs.players[socket.id]) {
       gs.teamA = gs.teamA.filter(id=>id!==socket.id);
       gs.teamB = gs.teamB.filter(id=>id!==socket.id);
       delete gs.players[socket.id];
     }
-    // Reconexion por nombre
     const prev = Object.entries(gs.players).find(([id,p])=>p.name===trimName&&p.isModerator===!!isModerator);
     if (prev) {
       const [oldId, oldP] = prev;
@@ -278,27 +261,18 @@ io.on('connection', socket => {
       else if (gs.phase==='phase2') socket.emit('restoreState',{phase:'phase2',timeA:gs.phase2.timeA,timeB:gs.phase2.timeB,wordsA:gs.phase1.guessedA,wordsB:gs.phase1.guessedB});
       else if (gs.phase==='phase3') socket.emit('restoreState',{phase:'phase3',state:publicState(),wordsA:gs.phase3.wordsA,wordsB:gs.phase3.wordsB});
       io.emit('lobbyUpdate', publicState());
-      console.log('[REJOIN]', trimName, 'fase:', gs.phase);
+      console.log('[REJOIN]', trimName, gs.phase);
       return;
     }
-    // Bloquear nuevos en juego activo
-    if (gs.phase !== 'lobby') { socket.emit('joinError',{msg:'El juego ya inicio. No puedes unirte ahora.'}); return; }
-    // Nombre duplicado
+    if (gs.phase !== 'lobby') { socket.emit('joinError',{msg:'El juego ya inicio.'}); return; }
     if (Object.values(gs.players).some(p=>p.name===trimName&&p.isModerator===!!isModerator)) { socket.emit('joinError',{msg:'Ese nombre ya esta en uso.'}); return; }
-    // Nuevo jugador
     const initials = trimName.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
     gs.players[socket.id] = {id:socket.id,name:trimName,initials,isModerator:!!isModerator,role:null,roleLabel:null,team:null,color:'#ddd',textColor:'#333'};
-    if (isModerator) {
-      gs.moderatorId=socket.id; socket.join('moderator');
-      socket.emit('joined',{id:socket.id,isModerator:true,isNew:true});
-    } else {
-      assignPlayerToTeam(socket.id);
-      const p=gs.players[socket.id]; socket.join('team'+p.team);
-      socket.emit('joined',{id:socket.id,isModerator:false,isNew:true,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor});
-    }
+    if (isModerator) { gs.moderatorId=socket.id; socket.join('moderator'); socket.emit('joined',{id:socket.id,isModerator:true,isNew:true}); }
+    else { assignPlayerToTeam(socket.id); const p=gs.players[socket.id]; socket.join('team'+p.team); socket.emit('joined',{id:socket.id,isModerator:false,isNew:true,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor}); }
     socket.emit('restoreState',{phase:'lobby'});
     io.emit('lobbyUpdate', publicState());
-    console.log('[NEW]', trimName, 'equipo:', gs.players[socket.id]?.team||'mod');
+    console.log('[NEW]', trimName, gs.players[socket.id]?.team||'mod');
   });
 
   socket.on('startGame', () => {
