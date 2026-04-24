@@ -429,7 +429,9 @@ textarea{resize:none;line-height:1.5;}
 </div>
 
 <script>
-const socket=io({transports:['websocket','polling']});
+const socket=io({transports:['polling']});
+socket.on('connect',()=>console.log('socket conectado',socket.id));
+socket.on('connect_error',(e)=>console.error('socket error',e.message));
 let myId=null,myName='',myRole=null,myRoleLabel='',myTeam=null,myColor='#ddd',myTextColor='#333',myInitials='',isMod=false;
 let gs={},p1Timer=null,p1Time=30,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
 let emojiStr='',selNext=null,dashData=null,subRevealed=false;
