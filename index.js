@@ -113,48 +113,71 @@ let gs = (()=>{
 if (!fs.existsSync(STATE_FILE)) saveGs();
 try { fs.writeFileSync(EVENTS_FILE, '[]'); } catch(e) {}
 
-// Polling cross-proceso cada 600ms
-let lastStateStr = '', lastEventsStr = '';
+// Polling cross-proceso cada 500ms
+// Estrategia: cada proceso lee el estado del disco y reenvía eventos a sus sockets locales
+let lastStateHash = '';
 setInterval(() => {
   try {
-    // Sincronizar estado
-    if (fs.existsSync(STATE_FILE)) {
-      const raw = fs.readFileSync(STATE_FILE, 'utf8');
-      if (raw !== lastStateStr) {
-        lastStateStr = raw;
-        const fresh = JSON.parse(raw);
-        if (fresh?.phase) {
-          const oldCount = JSON.stringify(Object.keys(gs.players||{}).sort());
-          const newCount = JSON.stringify(Object.keys(fresh.players||{}).sort());
-          gs = fresh;
-          if (oldCount !== newCount) io.emit('lobbyUpdate', publicState());
-        }
+    if (!fs.existsSync(STATE_FILE)) return;
+    const raw = fs.readFileSync(STATE_FILE, 'utf8');
+    if (raw === lastStateHash) return;
+    lastStateHash = raw;
+    const fresh = JSON.parse(raw);
+    if (!fresh?.phase) return;
+
+    const prevPhase = gs.phase;
+    const prevPlayers = JSON.stringify(Object.keys(gs.players||{}).sort());
+    const newPlayers = JSON.stringify(Object.keys(fresh.players||{}).sort());
+    gs = fresh;
+
+    // 1. Lobby update si cambiaron jugadores
+    if (prevPlayers !== newPlayers) {
+      io.emit('lobbyUpdate', publicState());
+    }
+
+    // 2. Cambio de fase - reenviar a sockets locales
+    if (prevPhase !== gs.phase) {
+      console.log('[SYNC] Fase cambio:', prevPhase, '->', gs.phase);
+      if (gs.phase === 'phase1') {
+        io.emit('phaseChange', { phase:'phase1', state:publicState() });
+        // Reenviar turno a sockets locales
+        setTimeout(() => resendTurnToLocalSockets(), 400);
+      } else if (gs.phase === 'phase2') {
+        io.emit('phaseChange', { phase:'phase2', timeA:gs.phase2.timeA, timeB:gs.phase2.timeB, wordsA:gs.phase1.guessedA, wordsB:gs.phase1.guessedB });
+      } else if (gs.phase === 'phase3') {
+        io.emit('phaseChange', { phase:'phase3', state:publicState(), wordsA:gs.phase3.wordsA, wordsB:gs.phase3.wordsB });
+      } else if (gs.phase === 'phase1Done' || gs.phase === 'done') {
+        io.emit('phaseChange', { phase:gs.phase, scores:gs.scores });
       }
     }
-    // Relay de eventos de otros procesos
-    if (fs.existsSync(EVENTS_FILE)) {
-      const raw = fs.readFileSync(EVENTS_FILE, 'utf8');
-      if (raw !== lastEventsStr) {
-        lastEventsStr = raw;
-        const events = JSON.parse(raw);
-        if (Array.isArray(events)) {
-          events.filter(e => Date.now()-e.ts < 3000).forEach(e => {
-            const { _pid, ts, event, ...data } = e;
-            if (_pid === process.pid) return;
-            if (event === 'p1:mimeHint') {
-              if (data.mimeId) io.to(data.mimeId).emit('p1:yourTurn', { role:'mime', word:data.word, hints:data.hints });
-              if (data.guesserId) io.to(data.guesserId).emit('p1:yourTurn', { role:'guesser' });
-              io.to('team'+data.team).emit('p1:turnUpdate', { team:data.team, turn:{mime:data.mimeId,guesser:data.guesserId}, wordIndex:data.wordIndex||0, scores:data.scores||{A:0,B:0}, passes:data.passes||0 });
-            } else {
-              io.emit(event, data);
-            }
-            console.log('[RELAY]', event, 'PID', _pid);
-          });
-        }
-      }
+
+    // 3. Reenviar turno actual si fase1 activa (para nuevos conectados)
+    if (gs.phase === 'phase1') {
+      resendTurnToLocalSockets();
     }
-  } catch(e) {}
-}, 600);
+
+  } catch(e) { console.error('[POLL]', e.message); }
+}, 500);
+
+function resendTurnToLocalSockets() {
+  // Para cada socket local, enviar su rol en el turno actual
+  ['A','B'].forEach(team => {
+    const turn = team==='A' ? gs.phase1.turnA : gs.phase1.turnB;
+    const idx = team==='A' ? gs.phase1.idxA : gs.phase1.idxB;
+    const words = team==='A' ? gs.phase1.wordsA : gs.phase1.wordsB;
+    const passes = team==='A' ? gs.phase1.passesA : gs.phase1.passesB;
+    if (!turn || !words.length) return;
+    const word = words[idx];
+    const wd = wordData(word);
+    // Enviar turnUpdate a todos los del equipo (no importa en qué proceso estén los sockets)
+    io.to('team'+team).emit('p1:turnUpdate', { team, turn, wordIndex:idx, scores:gs.scores, passes });
+    // Enviar yourTurn solo a sockets que estén conectados LOCALMENTE
+    io.sockets.sockets.forEach((s) => {
+      if (s.id === turn.mime) s.emit('p1:yourTurn', { role:'mime', word, hints:wd.hints });
+      if (s.id === turn.guesser) s.emit('p1:yourTurn', { role:'guesser' });
+    });
+  });
+}
 
 function shuffle(a){ const r=[...a]; for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];} return r; }
 
@@ -220,7 +243,6 @@ function startTurn(team) {
   io.to('team'+team).emit('p1:turnUpdate', { team, turn, wordIndex:idx, scores:gs.scores, passes });
   // Broadcast a otros procesos
   saveGs();
-  broadcastEvent({ event:'p1:mimeHint', _pid:process.pid, mimeId:turn.mime, guesserId:turn.guesser, word, hints:wd.hints, team, wordIndex:idx, scores:gs.scores, passes });
   p1[tk] = setTimeout(() => doPass(team,'timeout'), TURN_TIME);
 }
 
@@ -242,7 +264,7 @@ function finishPhase1Team(team) {
   else { gs.phase1.finB=true; gs.phase2.timeB=210; }
   io.emit('p1:teamDone', { team, scores:gs.scores, words: team==='A'?gs.phase1.guessedA:gs.phase1.guessedB });
   if (gs.phase1.finA && gs.phase1.finB) {
-    gs.phase='phase2'; saveGs();
+    gs.phase='phase1Done'; saveGs(); gs.phase='phase2';
     io.emit('phaseChange', { phase:'phase1Done', scores:gs.scores });
     broadcastEvent({ event:'phaseChange', _pid:process.pid, phase:'phase1Done', scores:gs.scores });
   }
@@ -386,7 +408,6 @@ io.on('connection', socket => {
     }
     socket.emit('restoreState',{phase:'lobby'});
     saveGs(); io.emit('lobbyUpdate', publicState());
-    broadcastEvent({event:'lobbyUpdate',_pid:process.pid,...publicState()});
     console.log('[NEW]', trimName, gs.players[socket.id]?.team||'mod');
   });
 
@@ -404,8 +425,7 @@ io.on('connection', socket => {
     const p1data = { phase:'phase1', state:publicState() };
     saveGs();
     io.emit('phaseChange', p1data);
-    broadcastEvent({ event:'phaseChange', _pid:process.pid, ...p1data });
-    setTimeout(() => { startTurn('A'); startTurn('B'); }, 800);
+      setTimeout(() => { startTurn('A'); startTurn('B'); }, 800);
   });
 
   socket.on('p1:emoji', ({ emoji }) => {
@@ -454,7 +474,6 @@ io.on('connection', socket => {
     gs.phase='phase2'; saveGs();
     const p2data = {phase:'phase2',timeA:gs.phase2.timeA,timeB:gs.phase2.timeB,wordsA:gs.phase1.guessedA,wordsB:gs.phase1.guessedB};
     io.emit('phaseChange', p2data);
-    broadcastEvent({event:'phaseChange',_pid:process.pid,...p2data});
   });
 
   socket.on('p2:submit', ({ text, isAuto }) => {
@@ -466,8 +485,7 @@ io.on('connection', socket => {
     io.emit('p2:submitted',{team,scores:gs.scores});
     if(gs.phase2.finA&&gs.phase2.finB){
       io.emit('phaseChange',{phase:'phase2Done'});
-      broadcastEvent({event:'phaseChange',_pid:process.pid,phase:'phase2Done'});
-    }
+      }
   });
 
   socket.on('startPhase3', () => {
@@ -483,7 +501,6 @@ io.on('connection', socket => {
     saveGs();
     const p3data={phase:'phase3',state:publicState(),wordsA:p3.wordsA,wordsB:p3.wordsB};
     io.emit('phaseChange',p3data);
-    broadcastEvent({event:'phaseChange',_pid:process.pid,...p3data});
     setTimeout(()=>{startPhase3Turn('A');startPhase3Turn('B');},500);
   });
 
@@ -537,7 +554,6 @@ io.on('connection', socket => {
     if (modPlayer) { gs.players[socket.id]=modPlayer; gs.moderatorId=socket.id; }
     saveGs();
     io.emit('reset');
-    broadcastEvent({event:'reset',_pid:process.pid});
   });
 
   socket.on('disconnect', () => {
