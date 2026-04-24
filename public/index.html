@@ -262,48 +262,24 @@ textarea{resize:none;line-height:1.5;}
 </head>
 <body>
 
-<div id="mod-float" class="hidden" style="position:fixed;bottom:20px;right:20px;z-index:9999;"><button onclick="if(confirm('Terminar y reiniciar?'))socket.emit('reset')" style="background:#c0392b;color:white;border:none;border-radius:12px;padding:12px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 15px rgba(0,0,0,0.3);">Terminar juego</button></div>
-
 <div id="s-land" class="screen active">
   <div class="center-wrap">
     <div class="card" style="text-align:center;">
       <div class="game-logo">des<span>a</span>cople</div>
       <p style="font-size:13px;color:#888;margin-bottom:24px;line-height:1.5;">Un juego sobre el compromiso ambiental universitario y lo que realmente ocurre en red.</p>
-
+      <label for="pname">Tu nombre</label>
+      <input type="text" id="pname" placeholder="¿Cómo te llamamos?" style="margin-bottom:14px;">
       <div id="view-player">
-        <label for="pname">Tu nombre</label>
-        <input type="text" id="pname" placeholder="¿Cómo te llamamos?" style="margin-bottom:14px;">
         <button class="btn btn-dark" onclick="joinGame(false)">Entrar al juego →</button>
         <div class="divider"><div class="div-line"></div><span class="div-text">¿eres el moderador?</span><div class="div-line"></div></div>
         <a class="link" onclick="switchView('mod')">Acceder como moderador →</a>
       </div>
-
-      <div id="view-mod" style="display:none;">
-        <label for="pname-mod">Tu nombre</label>
-        <input type="text" id="pname-mod" placeholder="Nombre del moderador" style="margin-bottom:10px;width:100%;box-sizing:border-box;padding:12px 14px;font-size:15px;border:1.5px solid #ddd;border-radius:10px;font-family:inherit;outline:none;">
-        <label for="mod-pass">Contraseña</label>
-        <input type="password" id="mod-pass" placeholder="Contraseña de moderador" style="margin-bottom:14px;width:100%;box-sizing:border-box;padding:12px 14px;font-size:15px;border:1.5px solid #ddd;border-radius:10px;font-family:inherit;outline:none;">
+      <div id="view-mod" style="display:none;margin-top:4px;">
+        <input type="password" id="mod-pass" placeholder="Contraseña de moderador" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:15px;border:1.5px solid #ddd;border-radius:10px;font-family:inherit;outline:none;margin-bottom:12px;">
         <button class="btn btn-dark" onclick="joinGame(true)">Entrar como moderador →</button>
         <div class="divider"><div class="div-line"></div><div class="div-line"></div></div>
         <a class="link" onclick="switchView('player')">← Volver</a>
       </div>
-    </div>
-  </div>
-</div>
-
-<div id="s-role" class="screen">
-  <div class="center-wrap">
-    <div class="card" style="text-align:center;">
-      <p style="font-size:15px;color:#555;margin-bottom:4px;">Hola, <strong id="role-player-name"></strong>.</p>
-      <p style="font-size:13px;color:#aaa;margin-bottom:24px;">El sistema te ha asignado un rol en la red:</p>
-      <div id="role-card" style="border-radius:14px;padding:28px 20px;margin-bottom:20px;">
-        <div id="role-type-tag" style="display:inline-block;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;margin-bottom:14px;"></div>
-        <div id="role-title" style="font-size:34px;font-weight:800;margin-bottom:12px;"></div>
-        <div id="role-desc" style="font-size:13px;line-height:1.7;color:#555;"></div>
-      </div>
-      <div id="role-team-badge" style="display:inline-block;font-size:12px;font-weight:700;padding:5px 18px;border-radius:20px;margin-bottom:20px;"></div>
-      <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:20px;color:#aaa;font-size:12px;"><div style="width:7px;height:7px;border-radius:50%;background:#4CAF50;animation:pulse 1.5s infinite;"></div>Esperando que los demas ingresen...</div>
-      <button class="btn btn-dark" onclick="goToLobby()">Ver sala de espera &rarr;</button>
     </div>
   </div>
 </div>
@@ -323,7 +299,6 @@ textarea{resize:none;line-height:1.5;}
       <div class="mb-info"><div class="mb-title">Panel del moderador</div><div class="mb-sub">Tú controlas cuándo empieza el juego</div></div>
       <div class="mb-stats"><div class="mbs"><div class="mbsv" id="mod-total">0</div><div class="mbsl">conectados</div></div><div class="mbs"><div class="mbsv" style="color:#4CAF50;" id="mod-unis">0</div><div class="mbsl">universidades</div></div></div>
       <button class="btn-start" onclick="startGame()">Iniciar juego ▶</button>
-      <button onclick="if(confirm('Reiniciar y cerrar juego?'))socket.emit('reset')" style="background:#c0392b;color:white;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-left:8px;">Reiniciar</button>
     </div>
     <div class="wait-bar" id="wait-bar"><div class="pulse-dot"></div><span>Esperando que el moderador inicie el juego...</span></div>
   </div>
@@ -459,7 +434,7 @@ let myId=null,myName='',myRole=null,myRoleLabel='',myTeam=null,myColor='#ddd',my
 let gs={},p1Timer=null,p1Time=30,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
 let emojiStr='',selNext=null,dashData=null,subRevealed=false;
 
-function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);const mf=document.getElementById('mod-float');if(mf){const gscr=['s-p1','s-p2','s-p3','s-p1fin','s-p2fin','s-p3fin','s-dash'];if(isMod&&gscr.includes(id))mf.classList.remove('hidden');else mf.classList.add('hidden');}}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
 function notif(msg,d=3000){const n=document.createElement('div');n.className='notif';n.textContent=msg;document.body.appendChild(n);setTimeout(()=>n.remove(),d);}
 function fmt(s){return Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60;}
 function mkAv(ini,bg,tc,sz=24){const d=document.createElement('div');d.style.cssText='background:'+bg+';color:'+tc+';width:'+sz+'px;height:'+sz+'px;font-size:'+Math.floor(sz*.38)+'px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;';d.textContent=ini;return d;}
@@ -472,58 +447,28 @@ function switchView(v){
 }
 
 function joinGame(asMod){
-  const nameEl=asMod?document.getElementById('pname-mod'):document.getElementById('pname');
-  const name=nameEl.value.trim();
+  const name=document.getElementById('pname').value.trim();
   if(!name){notif('Escribe tu nombre primero');return;}
-  const password=asMod?(document.getElementById('mod-pass').value.trim()):'';
-  if(asMod&&!password){notif('Escribe la contraseña');return;}
+  const password=asMod?(document.getElementById('mod-pass')?.value.trim()||''):'';
+  if(asMod&&!password){notif('Escribe la contraseña de moderador');return;}
   myName=name;isMod=asMod;
   myInitials=name.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
   socket.emit('join',{name,isModerator:asMod,password});
 }
 socket.on('joinError',({msg})=>notif(msg,5000));
 
-
-const ROLE_DESCS={universidad:'Representas la institucion academica. Tienes el compromiso formal, pero tambien la distancia del territorio.',gobierno:'Representas la institucionalidad publica. Tienes poder de decision, pero tambien de omision.',empresa:'Tu logica es la eficiencia, tu riesgo es el greenwashing.',org_civil:'Representas la sociedad organizada. Eres el puente entre la norma y la comunidad.',comunidad:'Tu voz es la mas legitima y la menos escuchada.'};
-const ROLE_TYPE={universidad:'Actor Institucional',gobierno:'Actor Territorial',empresa:'Actor Economico',org_civil:'Actor Social',comunidad:'Actor Comunitario'};
-
-function showRoleScreen(role,roleLabel,team,color,textColor){
-  document.getElementById('role-player-name').textContent=myName;
-  const card=document.getElementById('role-card');
-  card.style.background=color+'22';card.style.border='1.5px solid '+color+'88';
-  const tag=document.getElementById('role-type-tag');
-  tag.textContent=ROLE_TYPE[role]||'';tag.style.background='#f5ede0';tag.style.color='#7a4a1a';
-  const title=document.getElementById('role-title');
-  title.textContent=roleLabel;title.style.color=textColor;
-  document.getElementById('role-desc').textContent=ROLE_DESCS[role]||'';
-  const badge=document.getElementById('role-team-badge');
-  badge.textContent='Equipo '+team;badge.style.background=color+'33';badge.style.color=textColor;
-  showScreen('s-role');
-}
-function goToLobby(){showScreen('s-lobby');renderMyRoleBanner();}
-
-socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor,isNew})=>{
+socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor})=>{
   myId=id;
-  if(!isModerator){myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;}
-  document.getElementById('lobby-url').textContent=window.location.host;
-  if(isModerator){document.getElementById('mod-bar').classList.remove('hidden');document.getElementById('wait-bar').classList.add('hidden');}
-  window._joinedIsNew=isNew;
-});
-
-socket.on('restoreState',(data)=>{
-  if(data.state)gs=data.state;
-  if(data.phase==='lobby'){
-    if(isMod){showScreen('s-lobby');}
-    else if(window._joinedIsNew){showRoleScreen(myRole,myRoleLabel,myTeam,myColor,myTextColor);}
-    else{showScreen('s-lobby');renderMyRoleBanner();}
-  } else if(data.phase==='phase1'){
-    showScreen('s-lobby');renderMyRoleBanner();initP1();
-  } else if(data.phase==='phase2'){
-    showScreen('s-lobby');renderMyRoleBanner();
-    initP2(data.timeA,data.timeB,data.wordsA,data.wordsB);
-  } else if(data.phase==='phase3'){
-    showScreen('s-lobby');renderMyRoleBanner();initP3();
+  if(isModerator){
+    showScreen('s-lobby');
+    document.getElementById('mod-bar').classList.remove('hidden');
+    document.getElementById('wait-bar').classList.add('hidden');
+  } else {
+    myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;
+    showScreen('s-lobby');
+    renderMyRoleBanner();
   }
+  document.getElementById('lobby-url').textContent=window.location.host;
 });
 
 socket.on('lobbyUpdate',state=>{gs=state;updateLobby(state);});
