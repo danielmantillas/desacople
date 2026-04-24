@@ -2,6 +2,8 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+
+const MOD_PASSWORD = 'desacople2025'; // Cambiar esta clave
 const fs = require('fs');
 
 // ── ESTADO COMPARTIDO EN DISCO ───────────────────────────────────────────────
@@ -31,30 +33,28 @@ function loadGs() {
 process.on('uncaughtException', err => console.error('[CRASH]', err.message));
 process.on('unhandledRejection', r => console.error('[REJECT]', String(r)));
 
-// Vigilar cambios en el archivo de estado y notificar a clientes de este proceso
-let watchDebounce = null;
+// Polling del archivo de estado cada 800ms para sincronizar entre procesos
+let lastStateMd5 = '';
 function startFileWatcher() {
-  try {
-    fs.watch(STATE_FILE, (event) => {
-      if (event !== 'change') return;
-      clearTimeout(watchDebounce);
-      watchDebounce = setTimeout(() => {
-        const fresh = loadGs();
-        if (!fresh) return;
-        // Solo actualizar si el estado cambio (evitar loops)
-        const prevPhase = gs.phase;
-        const prevCount = Object.keys(gs.players||{}).length;
+  setInterval(() => {
+    try {
+      if (!fs.existsSync(STATE_FILE)) return;
+      const raw = fs.readFileSync(STATE_FILE, 'utf8');
+      if (raw === lastStateMd5) return; // Sin cambios
+      lastStateMd5 = raw;
+      const fresh = JSON.parse(raw);
+      if (!fresh || typeof fresh.phase !== 'string') return;
+      // Solo sincronizar si hay diferencia real en jugadores o fase
+      const oldPlayers = JSON.stringify(Object.keys(gs.players||{}).sort());
+      const newPlayers = JSON.stringify(Object.keys(fresh.players||{}).sort());
+      if (oldPlayers !== newPlayers || fresh.phase !== gs.phase) {
         gs = fresh;
-        const newCount = Object.keys(gs.players||{}).length;
-        if (newCount !== prevCount || gs.phase !== prevPhase) {
-          if (io) io.emit('lobbyUpdate', publicState());
-        }
-      }, 150);
-    });
-    console.log('[WATCH] Vigilando', STATE_FILE);
-  } catch(e) {
-    console.log('[WATCH] No se pudo vigilar archivo:', e.message);
-  }
+        if (io) io.emit('lobbyUpdate', publicState());
+        console.log('[SYNC] Estado actualizado desde disco, jugadores:', Object.keys(gs.players||{}).length);
+      }
+    } catch(e) {}
+  }, 800);
+  console.log('[WATCH] Polling activo cada 800ms');
 }
 
 const app = express();
@@ -289,7 +289,7 @@ function computeDashboard() {
 io.on('connection', socket => {
   console.log('connected:', socket.id);
 
-  socket.on('join', ({ name, isModerator }) => {
+  socket.on('join', ({ name, isModerator, password }) => {
     gs = loadGs() || gs; // Siempre leer estado mas reciente del disco
     const trimName = name.trim();
 
@@ -312,7 +312,7 @@ io.on('connection', socket => {
       const p = gs.players[socket.id];
       if (isModerator) { socket.join('moderator'); socket.emit('joined',{id:socket.id,isModerator:true,isNew:false}); }
       else { socket.join('team'+p.team); socket.emit('joined',{id:socket.id,isModerator:false,isNew:false,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor}); }
-      if (gs.phase==='lobby') socket.emit('restoreState',{phase:'lobby'});
+      if (gs.phase==='lobby') socket.emit('restoreState',{phase:'lobby', state:publicState()});
       else if (gs.phase==='phase1') socket.emit('restoreState',{phase:'phase1',state:publicState(),scores:gs.scores});
       else if (gs.phase==='phase2') socket.emit('restoreState',{phase:'phase2',timeA:gs.phase2.timeA,timeB:gs.phase2.timeB,wordsA:gs.phase1.guessedA,wordsB:gs.phase1.guessedB});
       else if (gs.phase==='phase3') socket.emit('restoreState',{phase:'phase3',state:publicState(),wordsA:gs.phase3.wordsA,wordsB:gs.phase3.wordsB});
@@ -321,8 +321,20 @@ io.on('connection', socket => {
       return;
     }
 
+    // Validar contrasena de moderador
+    if (isModerator) {
+      if (password !== MOD_PASSWORD) { socket.emit('joinError',{msg:'Contraseña incorrecta.'}); return; }
+      // Moderador nuevo: limpiar estado anterior si sala estaba vacia
+      const activePlayers = Object.values(gs.players).filter(p=>!p.isModerator);
+      if (activePlayers.length === 0) { gs = makeState(); console.log('[RESET] Estado limpiado al entrar moderador'); }
+    } else {
+      // Jugadores no pueden entrar sin moderador activo
+      const hasMod = Object.values(gs.players).some(p=>p.isModerator);
+      if (!hasMod) { socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que el moderador abra la sala.'}); return; }
+    }
+
     // Bloquear nuevos si juego activo
-    if (gs.phase !== 'lobby') { socket.emit('joinError',{msg:'El juego ya inicio.'}); return; }
+    if (!isModerator && gs.phase !== 'lobby') { socket.emit('joinError',{msg:'El juego ya inicio.'}); return; }
     // Nombre duplicado
     if (Object.values(gs.players).some(p=>p.name===trimName&&p.isModerator===!!isModerator)) { socket.emit('joinError',{msg:'Ese nombre ya esta en uso.'}); return; }
 
@@ -337,7 +349,7 @@ io.on('connection', socket => {
       const p=gs.players[socket.id]; socket.join('team'+p.team);
       socket.emit('joined',{id:socket.id,isModerator:false,isNew:true,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor});
     }
-    socket.emit('restoreState',{phase:'lobby'});
+    socket.emit('restoreState',{phase:'lobby', state:publicState()});
     saveGs(); io.emit('lobbyUpdate', publicState());
     console.log('[NEW]', trimName, gs.players[socket.id]?.team||'mod');
   });
