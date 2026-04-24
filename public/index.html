@@ -276,11 +276,10 @@ textarea{resize:none;line-height:1.5;}
   </div>
 </div>
 
-
 <div id="s-role" class="screen">
   <div class="center-wrap">
     <div class="card" style="text-align:center;">
-      <p style="font-size:15px;color:#555;margin-bottom:4px;">Hola, <strong id="role-player-name">—</strong>.</p>
+      <p style="font-size:15px;color:#555;margin-bottom:4px;">Hola, <strong id="role-player-name"></strong>.</p>
       <p style="font-size:13px;color:#aaa;margin-bottom:24px;">El sistema te ha asignado un rol en la red:</p>
       <div id="role-card" style="border-radius:14px;padding:28px 20px;margin-bottom:20px;text-align:center;">
         <div id="role-type-tag" style="display:inline-block;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;margin-bottom:14px;"></div>
@@ -439,10 +438,35 @@ textarea{resize:none;line-height:1.5;}
 </div>
 
 <script>
-const socket=io({transports:['polling'],reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:1500});
+const socket=io({transports:['websocket','polling'],reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:2000});
 let myId=null,myName='',myRole=null,myRoleLabel='',myTeam=null,myColor='#ddd',myTextColor='#333',myInitials='',isMod=false;
 let gs={},p1Timer=null,p1Time=30,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
 let emojiStr='',selNext=null,dashData=null,subRevealed=false;
+
+const ROLE_DESCS={
+  universidad:'Representas la institucin academica. Tienes el compromiso formal, pero tambien la distancia del territorio.',
+  gobierno:'Representas la institucionalidad publica del territorio. Tienes poder de decision, pero tambien de omision.',
+  empresa:'Representas los intereses del sector productivo. Tu logica es la eficiencia, tu riesgo es el greenwashing.',
+  org_civil:'Representas la sociedad organizada. Eres el puente entre la norma y la comunidad.',
+  comunidad:'Representas a quienes viven el territorio. Tu voz es la mas legitima y la menos escuchada.'
+};
+const ROLE_TYPE={universidad:'Actor Institucional',gobierno:'Actor Territorial',empresa:'Actor Economico',org_civil:'Actor Social',comunidad:'Actor Comunitario'};
+
+function saveSession(){
+  try{sessionStorage.setItem('dscp_s',JSON.stringify({name:myName,isMod,role:myRole,roleLabel:myRoleLabel,team:myTeam,color:myColor,textColor:myTextColor,initials:myInitials}));}catch(e){}
+}
+function clearSession(){try{sessionStorage.removeItem('dscp_s');}catch(e){}}
+function loadSession(){try{return JSON.parse(sessionStorage.getItem('dscp_s')||'null');}catch(e){return null;}}
+
+
+// Auto-reconectar si hay sesion guardada al cargar la pagina
+(function(){
+  const s=loadSession();
+  if(s){
+    myName=s.name;isMod=s.isMod;myRole=s.role;myRoleLabel=s.roleLabel;
+    myTeam=s.team;myColor=s.color;myTextColor=s.textColor;myInitials=s.initials||myName.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
+  }
+})();
 
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
 function notif(msg,d=3000){const n=document.createElement('div');n.className='notif';n.textContent=msg;document.body.appendChild(n);setTimeout(()=>n.remove(),d);}
@@ -459,14 +483,7 @@ function joinGame(asMod){
   socket.emit('join',{name,isModerator:asMod});
 }
 
-const ROLE_DESCS={
-  universidad:'Representas la institución académica. Tienes el compromiso formal, pero también la distancia del territorio.',
-  gobierno:'Representas la institucionalidad pública del territorio. Tienes poder de decisión, pero también de omisión.',
-  empresa:'Representas los intereses del sector productivo. Tu lógica es la eficiencia, tu riesgo es el greenwashing.',
-  org_civil:'Representas la sociedad organizada. Eres el puente entre la norma y la comunidad.',
-  comunidad:'Representas a quienes viven el territorio. Tu voz es la más legítima y la menos escuchada.'
-};
-const ROLE_TYPE={universidad:'Actor Institucional',gobierno:'Actor Territorial',empresa:'Actor Económico',org_civil:'Actor Social',comunidad:'Actor Comunitario'};
+socket.on('joinError',({msg})=>{notif(msg,4000);});
 
 socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor})=>{
   myId=id;
@@ -474,38 +491,41 @@ socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor})=>{
     showScreen('s-lobby');
     document.getElementById('mod-bar').classList.remove('hidden');
     document.getElementById('wait-bar').classList.add('hidden');
+    saveSession();
   } else {
     myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;
-    showRoleScreen(role,roleLabel,team,color,textColor);
+    saveSession();
+    // Si es reconexion (ya teniamos sesion guardada), ir directo al lobby
+    const prev=loadSession();
+    if(prev && prev.name===myName){
+      showScreen('s-lobby');
+      renderMyRoleBanner();
+    } else {
+      showRoleScreen(role,roleLabel,team,color,textColor);
+    }
   }
   document.getElementById('lobby-url').textContent=window.location.host;
 });
 
-socket.on('reconnect',()=>{
-  if(myName) socket.emit('join',{name:myName,isModerator:isMod});
+// Reconexion automatica con sesion guardada
+socket.on('connect',()=>{
+  if(myId && myName) socket.emit('join',{name:myName,isModerator:isMod});
 });
 
 function showRoleScreen(role,roleLabel,team,color,textColor){
   document.getElementById('role-player-name').textContent=myName;
   const card=document.getElementById('role-card');
-  card.style.background=color+'22';
-  card.style.border='1.5px solid '+color+'88';
+  card.style.background=color+'22';card.style.border='1.5px solid '+color+'88';
   const tag=document.getElementById('role-type-tag');
-  tag.textContent=ROLE_TYPE[role]||'Actor';
-  tag.style.background='#f5ede0';tag.style.color='#7a4a1a';
+  tag.textContent=ROLE_TYPE[role]||'Actor';tag.style.background='#f5ede0';tag.style.color='#7a4a1a';
   const title=document.getElementById('role-title');
   title.textContent=roleLabel;title.style.color=textColor;
   document.getElementById('role-desc').textContent=ROLE_DESCS[role]||'';
   const badge=document.getElementById('role-team-badge');
-  badge.textContent='Equipo '+team;
-  badge.style.background=color+'33';badge.style.color=textColor;
+  badge.textContent='Equipo '+team;badge.style.background=color+'33';badge.style.color=textColor;
   showScreen('s-role');
 }
-
-function goToLobby(){
-  showScreen('s-lobby');
-  renderMyRoleBanner();
-}
+function goToLobby(){showScreen('s-lobby');renderMyRoleBanner();}
 
 socket.on('lobbyUpdate',state=>{gs=state;updateLobby(state);});
 
@@ -545,7 +565,7 @@ function renderList(id,players){
 
 function startGame(){socket.emit('startGame');}
 
-socket.on('phaseChange',({phase,state,scores,timeA,timeB,wordsA,wordsB})=>{
+socket.on('phaseChange',({phase,state,scores,timeA,timeB,wordsA,wordsB})=>{saveSession();
   if(state)gs=state;
   if(phase==='phase1'){initP1();return;}
   if(phase==='phase1Done'){showP1Fin(scores);return;}
@@ -818,7 +838,7 @@ function revealSub(){
   document.getElementById('btn-reveal').className='btn-reveal br-sho';
 }
 
-socket.on('reset',()=>location.reload());
+socket.on('reset',()=>{clearSession();location.reload();});
 </script>
 </body>
 </html>
