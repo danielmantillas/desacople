@@ -770,8 +770,10 @@ function updateLobby(state) {
   document.getElementById('team-a-count').textContent = teamA.length + ' jugadores';
   document.getElementById('team-b-count').textContent = teamB.length + ' jugadores';
 
-  renderPlayerList('team-a-list', teamA, state.teamA && state.teamA.length > 0);
-  renderPlayerList('team-b-list', teamB, state.teamB && state.teamB.length > 0);
+const allPlayers = Object.values(state.players).filter(p => !p.isModerator);
+const half = Math.ceil(allPlayers.length / 2);
+renderPlayerList('team-a-list', allPlayers.slice(0, half), false);
+renderPlayerList('team-b-list', allPlayers.slice(half), false);
 }
 
 function renderPlayerList(containerId, players, showRoles) {
