@@ -323,10 +323,11 @@ io.on('connection', socket => {
 
     // Validar contrasena de moderador
     if (isModerator) {
-      if (password !== MOD_PASSWORD) { socket.emit('joinError',{msg:'Contraseña incorrecta.'}); return; }
-      // Moderador nuevo: limpiar estado anterior si sala estaba vacia
-      const activePlayers = Object.values(gs.players).filter(p=>!p.isModerator);
-      if (activePlayers.length === 0) { gs = makeState(); console.log('[RESET] Estado limpiado al entrar moderador'); }
+      if (password !== MOD_PASSWORD) { socket.emit('joinError',{msg:'Contrasena incorrecta.'}); return; }
+      // Moderador nuevo: siempre limpiar estado anterior para empezar sesion fresca
+      gs = makeState();
+      saveGs();
+      console.log('[RESET] Nueva sesion iniciada por moderador');
     } else {
       // Jugadores no pueden entrar sin moderador activo
       const hasMod = Object.values(gs.players).some(p=>p.isModerator);
