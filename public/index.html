@@ -1,0 +1,1990 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Desacople</title>
+<script src="/socket.io/socket.io.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:system-ui,-apple-system,sans-serif;background:#f0ede8;color:#1a1a1a;font-size:14px;}
+.hidden{display:none!important;}
+
+/* SCREENS */
+.screen{display:none;min-height:100vh;}
+.screen.active{display:block;}
+.center-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;}
+.card{background:white;border-radius:16px;padding:28px;max-width:480px;width:100%;margin:0 auto;}
+
+/* TYPOGRAPHY */
+.game-logo{font-size:28px;font-weight:800;letter-spacing:-1px;text-align:center;margin-bottom:6px;}
+.game-logo span{color:#378ADD;}
+.section-title{font-size:20px;font-weight:800;margin-bottom:6px;text-align:center;}
+.section-sub{font-size:13px;color:#888;margin-bottom:22px;line-height:1.5;text-align:center;}
+.phase-pill{font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;display:inline-block;margin-bottom:14px;}
+
+/* FORMS */
+label{font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:5px;}
+input[type=text],textarea{width:100%;border:1px solid #ddd;border-radius:9px;padding:10px 13px;font-size:14px;font-family:inherit;color:#1a1a1a;outline:none;transition:border-color .15s;}
+input[type=text]:focus,textarea:focus{border-color:#378ADD;}
+textarea{resize:none;line-height:1.5;}
+.btn{width:100%;height:46px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .15s;}
+.btn:hover{opacity:.88;}
+.btn-dark{background:#1a1a1a;color:white;}
+.btn-blue{background:#378ADD;color:white;}
+.btn-green{background:#085041;color:white;}
+.btn-purple{background:#534AB7;color:white;}
+.btn-sm{height:38px;width:auto;padding:0 14px;font-size:12px;}
+.btn-ghost{background:white;color:#555;border:1px solid #ddd;}
+.btn-pass{background:white;color:#888;border:1px solid #ddd;height:38px;padding:0 12px;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit;}
+.mod-note{font-size:11px;color:#bbb;text-align:center;margin-top:8px;}
+.divider{display:flex;align-items:center;gap:10px;margin:18px 0;}
+.divider-line{flex:1;height:1px;background:#eee;}
+.divider-text{font-size:11px;color:#bbb;}
+.link{font-size:12px;color:#888;text-decoration:none;display:block;text-align:center;}
+.link:hover{color:#378ADD;}
+
+/* LOBBY */
+.lobby-wrap{padding:16px;display:flex;flex-direction:column;gap:10px;min-height:100vh;}
+.lobby-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.lobby-title{font-size:15px;font-weight:700;}
+.player-count{font-size:12px;color:#666;background:white;padding:4px 11px;border-radius:20px;border:1px solid #e0ddd8;}
+.teams-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.team-box{background:white;border-radius:11px;border:1px solid #e0ddd8;overflow:hidden;}
+.team-box-header{padding:9px 14px;border-bottom:1px solid #f0ede8;display:flex;align-items:center;justify-content:space-between;}
+.team-name-a{font-size:13px;font-weight:700;color:#0C447C;}
+.team-name-b{font-size:13px;font-weight:700;color:#085041;}
+.team-count{font-size:11px;color:#999;}
+.players-list{padding:11px 14px;display:flex;flex-direction:column;gap:7px;min-height:120px;}
+.player-row{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;background:#fafaf8;border:1px solid #f0ede8;}
+.pav{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;}
+.pname{font-size:12px;font-weight:600;flex:1;}
+.prole-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;}
+.empty-slot{border:1px dashed #ddd;background:transparent;opacity:.5;}
+.mod-bar{background:#1a1a1a;border-radius:11px;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+.mod-bar-info{color:white;}
+.mod-bar-title{font-size:13px;font-weight:700;margin-bottom:2px;}
+.mod-bar-sub{font-size:11px;color:#666;}
+.mod-stats{display:flex;gap:14px;}
+.mod-stat{text-align:center;}
+.mod-stat-val{font-size:18px;font-weight:700;color:white;}
+.mod-stat-label{font-size:10px;color:#555;}
+.btn-start{padding:10px 22px;background:#4CAF50;color:white;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+.waiting-msg{font-size:12px;color:#aaa;display:flex;align-items:center;justify-content:center;gap:7px;margin-top:16px;}
+.pulse-dot{width:8px;height:8px;border-radius:50%;background:#4CAF50;animation:pulse 1.5s infinite;flex-shrink:0;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+
+/* ROL REVEAL */
+.rol-box{border-radius:11px;padding:18px;margin-bottom:20px;text-align:center;border:2px solid;}
+.rol-name{font-size:24px;font-weight:800;margin-bottom:7px;}
+.rol-desc{font-size:12px;color:#666;line-height:1.6;}
+
+/* GAME LAYOUT */
+.game-wrap{display:flex;flex-direction:column;gap:6px;padding:8px;min-height:100vh;}
+.topbar{background:white;border-radius:10px;border:1px solid #e0ddd8;padding:7px 12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;}
+.pbadge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;}
+.pb1{background:#E6F1FB;color:#0C447C;}
+.pb2{background:#EEEDFE;color:#3C3489;}
+.pb3{background:#E1F5EE;color:#085041;}
+.score-display{font-size:13px;font-weight:700;}
+.score-bad{font-size:11px;color:#c0392b;margin-left:4px;}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.panel{background:white;border-radius:10px;border:1px solid #e0ddd8;overflow:hidden;}
+.panel-head{padding:7px 11px;border-bottom:1px solid #f0ede8;display:flex;align-items:center;justify-content:space-between;}
+.pname-a{font-size:12px;font-weight:700;color:#0C447C;}
+.pname-b{font-size:12px;font-weight:700;color:#085041;}
+
+/* WORD PROGRESS */
+.prog-row{display:flex;gap:4px;align-items:center;}
+.prog-label{font-size:11px;color:#888;margin-right:2px;white-space:nowrap;}
+.pd{width:26px;height:26px;border-radius:50%;border:1.5px solid #ddd;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#bbb;}
+.pd.done{background:#E1F5EE;border-color:#9FE1CB;color:#085041;}
+.pd.cur{background:#E6F1FB;border-color:#B5D4F4;color:#0C447C;animation:pp 1.5s infinite;}
+@keyframes pp{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* CHAT */
+.chat{padding:9px 11px;min-height:140px;max-height:175px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
+.msg{display:flex;gap:6px;align-items:flex-start;}
+.av{width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;}
+.bub{flex:1;border-radius:0 8px 8px 8px;padding:5px 9px;font-size:12px;line-height:1.4;}
+.be{background:#f5f3ef;}
+.bg{background:#EBF4FF;}
+.bs{background:#f5f3ef;border-left:3px solid #ddd;border-radius:0 8px 8px 0;}
+.rtag{font-size:10px;font-weight:700;margin-bottom:2px;}
+.rtm{color:#993556;}.rtg{color:#185FA5;}
+.eb{font-size:20px;letter-spacing:2px;}
+.guess-ok{color:#0F6E56;font-weight:700;}
+.guess-try{color:#666;font-style:italic;}
+.sysmsg{font-size:12px;color:#888;font-style:italic;}
+.sysmsg b{color:#1a1a1a;font-style:normal;}
+.dots-anim{display:inline-flex;gap:3px;align-items:center;}
+.dot{width:5px;height:5px;border-radius:50%;background:#aaa;animation:bn 1.2s infinite;display:inline-block;}
+.dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+@keyframes bn{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-4px)}}
+
+/* QUEUE */
+.queue-bar{padding:6px 11px;background:#fafaf8;border-top:1px solid #f0ede8;display:flex;align-items:center;gap:5px;overflow-x:auto;}
+.ql{font-size:10px;color:#999;white-space:nowrap;}
+.qp{display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;}
+.qav{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;border:2px solid transparent;}
+.qav.qm{border-color:#F4C0D1;}.qav.qg{border-color:#B5D4F4;}
+.qtag{font-size:9px;font-weight:700;padding:1px 5px;border-radius:20px;white-space:nowrap;}
+.qtm{background:#FBEAF0;color:#993556;}.qtg{background:#E6F1FB;color:#185FA5;}.qtn{background:#f0ede8;color:#888;}
+.qarr{color:#ddd;font-size:11px;}
+
+/* OTHER TEAM PANEL */
+.other-panel-body{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;gap:10px;min-height:140px;}
+.other-pts{font-size:24px;font-weight:800;text-align:center;}
+.other-label{font-size:11px;color:#aaa;text-align:center;}
+.other-hidden{font-size:11px;color:#bbb;font-style:italic;text-align:center;}
+
+/* BOTTOM */
+.bottom{background:white;border-radius:10px;border:1px solid #e0ddd8;padding:11px 13px;}
+.bh{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}
+.bi{display:flex;align-items:center;gap:8px;}
+.my-av{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;}
+.my-name{font-size:13px;font-weight:600;}
+.my-role{font-size:11px;color:#666;}
+.timer-badge{font-size:13px;font-weight:700;padding:4px 11px;border-radius:20px;}
+.timer-hot{background:#FCEBEB;color:#c0392b;}
+.timer-ok{background:#E1F5EE;color:#085041;}
+.timer-wait{background:#f0ede8;color:#888;}
+.timer-bar-w{height:4px;background:#f0ede8;border-radius:2px;margin-bottom:9px;overflow:hidden;}
+.timer-bar{height:4px;border-radius:2px;transition:width .5s;}
+.banner{padding:6px 11px;border-radius:8px;margin-bottom:9px;font-size:12px;font-weight:700;}
+.ban-mime{background:#FBEAF0;color:#72243E;}
+.ban-guess{background:#EBF4FF;color:#0C447C;}
+.ban-obs{background:#f5f3ef;color:#888;font-weight:500;}
+.ban-uni{background:#f0eeff;color:#534AB7;font-weight:500;}
+.ban-turn{background:#E1F5EE;color:#085041;}
+.ban-cross{background:#FAEEDA;color:#633806;}
+
+/* SECRET WORD */
+.secret-word-box{background:#EBF4FF;border:1.5px solid #B5D4F4;border-radius:8px;padding:8px 13px;margin-bottom:9px;text-align:center;}
+.sw-label{font-size:10px;color:#888;margin-bottom:2px;}
+.sw-word{font-size:20px;font-weight:800;color:#0C447C;}
+.sw-note{font-size:10px;color:#aaa;margin-top:2px;}
+
+/* EMOJI KB */
+.ekb{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:7px;}
+.ek{font-size:19px;padding:4px 6px;border-radius:7px;border:1px solid #eee;background:#fafaf8;cursor:pointer;user-select:none;}
+.ek:hover{background:#f0ede8;}
+.ek:active{background:#e5e1db;}
+.ecomp{display:flex;gap:5px;}
+.eprev{flex:1;min-height:36px;background:#f5f3ef;border:1px solid #ddd;border-radius:8px;padding:5px 9px;font-size:19px;letter-spacing:2px;min-width:0;}
+.btnx{height:36px;padding:0 9px;border-radius:8px;border:1px solid #ddd;background:white;cursor:pointer;font-size:12px;color:#888;font-family:inherit;}
+.btns{height:36px;padding:0 14px;border-radius:8px;border:none;background:#F4C0D1;color:#72243E;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;}
+
+/* GUESS ROW */
+.guess-row{display:flex;gap:5px;margin-bottom:7px;}
+.guess-input{flex:1;height:38px;border:1.5px solid #378ADD;border-radius:8px;padding:0 11px;font-size:13px;font-family:inherit;outline:none;background:#f9fbff;color:#1a1a1a;}
+.pnote{font-size:11px;color:#c0392b;margin-bottom:7px;}
+.wchk{font-size:11px;margin-bottom:7px;}
+.wchk-ok{color:#0F6E56;font-weight:600;}
+.wchk-mis{color:#c0392b;}
+.btn-confirm{height:38px;flex:1;border-radius:8px;border:none;background:#1a1a1a;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+.hints-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;align-items:center;}
+.hint-label{font-size:11px;color:#888;}
+.hint-btn{padding:3px 9px;border-radius:20px;border:1px solid #ddd;background:white;font-size:11px;cursor:pointer;color:#555;font-family:inherit;}
+.hint-btn:disabled{opacity:.4;cursor:not-allowed;}
+.hint-text{font-size:11px;color:#534AB7;background:#f0eeff;padding:3px 9px;border-radius:20px;}
+
+/* SPEC BOX */
+.spec-box{background:#f5f3ef;border-radius:8px;padding:11px;text-align:center;margin-bottom:9px;}
+.spec-t{font-size:13px;font-weight:600;color:#555;margin-bottom:3px;}
+.spec-s{font-size:12px;color:#888;line-height:1.5;}
+.stat-row{display:flex;gap:7px;}
+.stat{flex:1;background:#f5f3ef;border-radius:8px;padding:7px 9px;text-align:center;}
+.sv{font-size:18px;font-weight:700;}
+.sl{font-size:10px;color:#888;margin-top:2px;}
+
+/* UNI WORDS */
+.uni-words-box{background:#f0eeff;border-radius:8px;padding:9px 11px;margin-bottom:9px;}
+.uni-words-title{font-size:10px;font-weight:700;color:#534AB7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+.uni-words-list{display:flex;gap:4px;flex-wrap:wrap;}
+.uni-word{font-size:12px;font-weight:700;padding:3px 9px;border-radius:20px;background:white;color:#3C3489;border:1px solid #CECBF6;}
+.uni-word-pend{background:#f5f3ef;color:#ccc;border-color:#eee;font-weight:400;font-style:italic;}
+
+/* PHASE 2 */
+.wr-box{background:#f0eeff;border:1.5px solid #CECBF6;border-radius:9px;padding:10px 12px;margin-bottom:9px;}
+.wr-label{font-size:10px;font-weight:700;color:#534AB7;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+.wr-words{display:flex;gap:4px;flex-wrap:wrap;}
+.wr-word{font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;background:white;color:#3C3489;border:1.5px solid #CECBF6;}
+.wr-word.used{background:#3C3489;color:white;}
+.timer-big{font-size:44px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-2px;text-align:center;margin-bottom:4px;}
+.timer-bar-full{width:100%;height:5px;background:#f0ede8;border-radius:3px;overflow:hidden;margin-bottom:10px;}
+.timer-bar-fill{height:5px;border-radius:3px;background:#534AB7;}
+.writing-ind{display:flex;align-items:center;gap:6px;font-size:12px;color:#534AB7;font-weight:600;justify-content:center;margin-bottom:6px;}
+.wi-dot{width:7px;height:7px;border-radius:50%;background:#534AB7;animation:pulse 1.5s infinite;}
+.brow{display:flex;gap:7px;}
+.btn-send-decl{flex:1;height:40px;border-radius:9px;border:none;background:#3C3489;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+.charcount{font-size:11px;color:#aaa;margin-bottom:8px;text-align:right;}
+
+/* PHASE 3 */
+.story-stream{padding:8px 11px;min-height:140px;max-height:175px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
+.story-line{display:flex;gap:6px;align-items:flex-start;}
+.slav{width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;}
+.slt{font-size:12px;line-height:1.5;flex:1;padding-top:2px;}
+.sl-word-a{font-weight:700;color:#0C447C;}
+.sl-word-b{font-weight:700;color:#085041;}
+.sl-cross{background:#FAEEDA;border-radius:5px;padding:2px 6px;border-left:2px solid #BA7517;}
+.writing-now-a{display:flex;gap:5px;align-items:center;padding:4px 8px;background:#f0eeff;border-radius:6px;font-size:11px;color:#534AB7;font-weight:600;}
+.writing-now-b{display:flex;gap:5px;align-items:center;padding:4px 8px;background:#E1F5EE;border-radius:6px;font-size:11px;color:#0F6E56;font-weight:600;}
+.wdot-a{width:6px;height:6px;border-radius:50%;background:#534AB7;animation:pulse 1.5s infinite;flex-shrink:0;}
+.wdot-b{width:6px;height:6px;border-radius:50%;background:#1D9E75;animation:pulse 1.5s infinite;flex-shrink:0;}
+.wu-row{display:flex;gap:3px;flex-wrap:wrap;}
+.wu{font-size:10px;padding:1px 6px;border-radius:20px;}
+.wu-a{background:#E6F1FB;color:#0C447C;}
+.wu-b{background:#E1F5EE;color:#085041;}
+.wu.done{text-decoration:line-through;opacity:.4;}
+.cursor-blink{display:inline-block;width:2px;height:11px;background:#534AB7;vertical-align:middle;animation:blink 1s infinite;margin-left:2px;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* GRAPH */
+.graph-panel{background:white;border-radius:10px;border:1px solid #e0ddd8;overflow:hidden;}
+.gph-head{padding:7px 11px;border-bottom:1px solid #f0ede8;display:flex;align-items:center;justify-content:space-between;}
+.gph-title{font-size:12px;font-weight:700;}
+.gleg{display:flex;gap:8px;}
+.gli{display:flex;align-items:center;gap:4px;font-size:10px;color:#888;}
+.gll{width:14px;height:2px;border-radius:1px;}
+
+/* POSTA NOTIFICATIONS */
+.pn-own{background:#E6F1FB;border:1.5px solid #B5D4F4;border-radius:11px;padding:12px 14px;margin-bottom:9px;}
+.pn-own-top{display:flex;align-items:center;gap:8px;margin-bottom:0;}
+.pn-own-title{font-size:13px;font-weight:700;color:#0C447C;}
+.pn-own-sub{font-size:11px;color:#185FA5;margin-top:1px;}
+.pn-cross{background:#FAEEDA;border:1.5px solid #EF9F27;border-radius:11px;padding:13px 14px;margin-bottom:9px;text-align:center;}
+.pnc-title{font-size:14px;font-weight:800;color:#633806;margin-bottom:4px;}
+.pnc-sub{font-size:12px;color:#854F0B;line-height:1.5;}
+
+/* AV SELECTOR */
+.avs{margin-top:8px;}
+.avsl{font-size:11px;color:#888;margin-bottom:5px;}
+.avsg{display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end;}
+.avsa{display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;}
+.avsc{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid transparent;transition:all .15s;}
+.avsc:hover{border-color:#085041;}
+.avsc.sel{border-color:#085041;box-shadow:0 0 0 3px #E1F5EE;}
+.avsn{font-size:9px;color:#888;text-align:center;line-height:1.3;}
+.word-prompt-row{display:flex;align-items:center;gap:8px;margin-bottom:9px;}
+.wp-label{font-size:11px;color:#888;}
+.wp-word{font-size:14px;font-weight:800;color:#085041;background:#E1F5EE;padding:3px 12px;border-radius:20px;}
+.wp-word-cross{font-size:14px;font-weight:800;color:#633806;background:#FAEEDA;padding:3px 12px;border-radius:20px;border:1.5px solid #EF9F27;}
+.story-ctx{background:#f5f3ef;border-radius:8px;padding:7px 11px;margin-bottom:9px;font-size:12px;line-height:1.6;color:#555;border-left:3px solid #B5D4F4;}
+.sct-label{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;}
+.no-ctx{background:#f5f3ef;border-radius:8px;padding:9px 11px;margin-bottom:9px;text-align:center;font-size:12px;color:#aaa;font-style:italic;}
+.write-input{width:100%;min-height:56px;background:#fafaf8;border:1.5px solid #1D9E75;border-radius:9px;padding:7px 11px;font-size:13px;line-height:1.6;resize:none;font-family:inherit;color:#1a1a1a;outline:none;margin-bottom:6px;}
+.write-input-cross{border-color:#EF9F27;}
+.btn-send-story{flex:1;height:38px;border-radius:8px;border:none;background:#085041;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn-send-story:disabled{opacity:.4;}
+.btn-send-cross{background:#BA7517;}
+.row{display:flex;gap:6px;}
+
+/* PHASE 2 OBS */
+.obs-timer-big{font-size:38px;font-weight:800;color:#3C3489;font-variant-numeric:tabular-nums;text-align:center;margin:10px 0;}
+
+/* DASHBOARD */
+.dash{padding:10px;display:flex;flex-direction:column;gap:9px;min-height:100vh;}
+.dash-hdr{background:#1a1a1a;border-radius:11px;padding:14px 18px;}
+.dh-title{font-size:17px;font-weight:800;color:white;}
+.dh-sub{font-size:11px;color:#555;margin-top:2px;}
+.score-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;}
+.sc-card{background:white;border-radius:11px;border:1px solid #e0ddd8;padding:13px 15px;}
+.sc-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.sc-total{font-size:26px;font-weight:800;}
+.sbr{display:flex;flex-direction:column;gap:5px;}
+.sbrow{display:flex;align-items:center;justify-content:space-between;font-size:12px;}
+.sbl{color:#888;}.sbv{font-weight:700;}
+.sbv-pos{color:#0F6E56;}.sbv-neg{color:#c0392b;}.sbv-hid{color:#534AB7;}
+.sbdiv{height:1px;background:#f0ede8;margin:3px 0;}
+.sbtot{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:700;margin-top:3px;}
+.wb{font-size:10px;font-weight:700;padding:3px 8px;border-radius:20px;margin-top:7px;display:inline-block;}
+.wb-dec{background:#E6F1FB;color:#0C447C;}.wb-real{background:#E1F5EE;color:#085041;}.wb-los{background:#f5f3ef;color:#888;}
+.dim-sec{background:white;border-radius:11px;border:1px solid #e0ddd8;overflow:hidden;}
+.dim-hdr{padding:9px 15px;border-bottom:1px solid #f0ede8;display:flex;align-items:center;gap:9px;}
+.dim-num{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;}
+.dim-ttl{font-size:13px;font-weight:700;}.dim-sttl{font-size:11px;color:#888;margin-top:1px;}
+.dim-cols{display:grid;grid-template-columns:1fr 1fr;}
+.dim-col{padding:12px 14px;border-right:1px solid #f0ede8;}
+.dim-col:last-child{border-right:none;}
+.dct-a{font-size:11px;font-weight:700;color:#0C447C;margin-bottom:7px;}
+.dct-b{font-size:11px;font-weight:700;color:#085041;margin-bottom:7px;}
+.decl-txt{font-size:12px;line-height:1.7;color:#333;font-style:italic;}
+.dw-a{font-weight:700;font-style:normal;color:#3C3489;background:#EEEDFE;padding:1px 4px;border-radius:4px;}
+.dw-b{font-weight:700;font-style:normal;color:#3C3489;background:#EEEDFE;padding:1px 4px;border-radius:4px;}
+.auto-tag{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;background:#FAECE7;color:#712B13;padding:2px 7px;border-radius:20px;margin-bottom:7px;}
+.pl{display:flex;gap:5px;align-items:flex-start;margin-bottom:6px;}
+.plav{width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;}
+.plt{font-size:12px;line-height:1.5;flex:1;padding-top:1px;}
+.pw-a{font-weight:700;color:#0C447C;}.pw-b{font-weight:700;color:#085041;}
+.pl-cross-bub{background:#FAEEDA;border-radius:4px;padding:2px 6px;border-left:2px solid #BA7517;}
+.pl-ctag{font-size:9px;color:#854F0B;font-weight:700;}
+.sub-cols{display:grid;grid-template-columns:1fr 1fr;}
+.sub-col{padding:12px 14px;border-right:1px solid #f0ede8;}
+.sub-col:last-child{border-right:none;}
+.si{display:flex;align-items:flex-start;justify-content:space-between;gap:7px;margin-bottom:7px;padding-bottom:7px;border-bottom:1px solid #f5f3ef;}
+.si:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+.sil{font-size:12px;color:#555;flex:1;line-height:1.4;}
+.siv{font-size:12px;font-weight:700;white-space:nowrap;}
+.siv-pos{color:#0F6E56;}.siv-neg{color:#c0392b;}
+.graph-chips{display:flex;gap:6px;padding:9px 13px;border-bottom:1px solid #f0ede8;flex-wrap:wrap;}
+.gchip{font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;}
+.gc-pos{background:#E1F5EE;color:#085041;}.gc-neg{background:#FCEBEB;color:#A32D2D;}.gc-neu{background:#f5f3ef;color:#555;}
+.verd{background:#1a1a1a;border-radius:11px;padding:18px;}
+.vd-lbl{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:.06em;margin-bottom:11px;text-align:center;}
+.vd-cols{display:grid;grid-template-columns:1fr auto 1fr;gap:9px;align-items:center;margin-bottom:14px;}
+.vd-team{background:#252525;border-radius:9px;padding:12px;}
+.vd-tn{font-size:11px;font-weight:700;margin-bottom:3px;}
+.vd-dec{font-size:12px;color:#888;margin-bottom:2px;}
+.vd-dec span{font-weight:700;color:#aaa;}
+.vd-real{font-size:17px;font-weight:800;}
+.vd-vs{font-size:22px;font-weight:800;color:#444;}
+.vd-winner{background:#252525;border-radius:9px;padding:14px;text-align:center;}
+.vdw-lbl{font-size:11px;color:#555;margin-bottom:5px;}
+.vdw-name{font-size:20px;font-weight:800;color:white;margin-bottom:4px;}
+.vdw-why{font-size:12px;color:#666;line-height:1.5;}
+.btn-reveal{width:100%;height:44px;border:none;border-radius:9px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:9px;}
+.br-hid{background:#534AB7;color:white;}
+.br-sho{background:#333;color:#666;}
+.hs{filter:blur(5px);transition:filter .5s;}
+.hs.rev{filter:blur(0);}
+
+/* FIN DE FASE */
+.fin-card{background:white;border-radius:16px;padding:28px;max-width:460px;width:100%;margin:0 auto;text-align:center;}
+.fin-icon{font-size:44px;margin-bottom:14px;}
+.fin-stats{display:flex;gap:7px;margin-bottom:18px;}
+.fst{flex:1;background:#f5f3ef;border-radius:9px;padding:9px 7px;text-align:center;}
+.fsv{font-size:20px;font-weight:800;}.fsl{font-size:10px;color:#888;margin-top:2px;}
+
+/* NOTIFICATIONS */
+.notif{position:fixed;top:16px;right:16px;background:#1a1a1a;color:white;padding:10px 16px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;animation:slideIn .3s ease;max-width:280px;}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+</style>
+</head>
+<body>
+
+<!-- SCREEN: LANDING -->
+<div id="screen-landing" class="screen active">
+  <div class="center-wrap" style="background:#f0ede8;">
+    <div class="card" style="text-align:center;">
+      <div class="game-logo">des<span>a</span>cople</div>
+      <p style="font-size:13px;color:#888;margin-bottom:28px;line-height:1.5;">Un juego sobre el compromiso ambiental universitario<br>y lo que realmente ocurre en red.</p>
+      <label for="player-name">Tu nombre</label>
+      <input type="text" id="player-name" placeholder="¿Cómo te llamamos?" style="margin-bottom:14px;">
+      <button class="btn btn-dark" onclick="joinGame(false)">Entrar al juego →</button>
+      <div class="divider"><div class="divider-line"></div><span class="divider-text">¿eres el moderador?</span><div class="divider-line"></div></div>
+      <a href="#" class="link" onclick="joinGame(true);return false;">Acceder como moderador →</a>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: ROL REVEAL -->
+<div id="screen-rol" class="screen">
+  <div class="center-wrap" style="background:#f0ede8;">
+    <div class="card" style="text-align:center;">
+      <p style="font-size:15px;color:#555;margin-bottom:4px;">Hola, <strong id="rol-player-name"></strong>.</p>
+      <p style="font-size:13px;color:#888;margin-bottom:22px;">El sistema te ha asignado un rol en la red:</p>
+      <div id="rol-box" class="rol-box"></div>
+      <div class="waiting-msg"><div class="pulse-dot"></div><span>Esperando que el moderador inicie...</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: LOBBY (moderator) -->
+<div id="screen-lobby" class="screen">
+  <div class="lobby-wrap">
+    <div class="lobby-header">
+      <div><div class="lobby-title">Sala de espera — Desacople</div><div style="font-size:12px;color:#888;margin-top:2px;">Los jugadores entran al enlace que compartiste</div></div>
+      <span class="player-count" id="lobby-count">0 jugadores conectados</span>
+    </div>
+    <div class="teams-grid">
+      <div class="team-box">
+        <div class="team-box-header"><span class="team-name-a">Equipo A</span><span class="team-count" id="team-a-count">0 jugadores</span></div>
+        <div class="players-list" id="team-a-list"></div>
+      </div>
+      <div class="team-box">
+        <div class="team-box-header"><span class="team-name-b">Equipo B</span><span class="team-count" id="team-b-count">0 jugadores</span></div>
+        <div class="players-list" id="team-b-list"></div>
+      </div>
+    </div>
+    <div class="mod-bar">
+      <div class="mod-bar-info"><div class="mod-bar-title">Panel del moderador</div><div class="mod-bar-sub">Tú controlas cuándo empieza el juego</div></div>
+      <div class="mod-stats">
+        <div class="mod-stat"><div class="mod-stat-val" id="mod-total">0</div><div class="mod-stat-label">conectados</div></div>
+        <div class="mod-stat"><div class="mod-stat-val" style="color:#4CAF50;" id="mod-unis">0</div><div class="mod-stat-label">universidades</div></div>
+      </div>
+      <button class="btn-start" id="btn-start-game" onclick="startGame()">Iniciar juego ▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: PHASE 1 -->
+<div id="screen-phase1" class="screen">
+  <div class="game-wrap">
+    <div class="topbar">
+      <span class="pbadge pb1" id="p1-badge">Fase 1 · Equipo A</span>
+      <div class="prog-row">
+        <span class="prog-label">Tu equipo:</span>
+        <div id="p1-prog-my"></div>
+        <span style="font-size:11px;color:#aaa;margin:0 5px 0 10px;">Otro equipo:</span>
+        <div id="p1-prog-other"></div>
+      </div>
+      <div><span class="score-display" id="p1-score">0 pts</span></div>
+    </div>
+    <div class="cols2">
+      <div class="panel" id="p1-my-panel">
+        <div class="panel-head">
+          <span id="p1-my-team-name" class="pname-a">Equipo A</span>
+          <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:#555;" id="p1-turn-indicator">
+            <div style="width:6px;height:6px;border-radius:50%;background:#4CAF50;"></div>
+            <span id="p1-turn-text">—</span>
+          </div>
+        </div>
+        <div class="chat" id="p1-chat"></div>
+        <div class="queue-bar" id="p1-queue"><span class="ql">Fila:</span></div>
+      </div>
+      <div class="panel" style="display:flex;flex-direction:column;">
+        <div class="panel-head"><span style="font-size:12px;font-weight:700;color:#555;">Equipo rival — solo su progreso</span></div>
+        <div class="other-panel-body">
+          <div id="p1-other-prog"></div>
+          <div class="other-pts" id="p1-other-pts">—</div>
+          <div class="other-label" id="p1-other-label">puntos</div>
+          <div class="other-hidden">Su chat está oculto</div>
+        </div>
+      </div>
+    </div>
+    <div class="bottom" id="p1-bottom">
+      <div class="bh">
+        <div class="bi">
+          <div class="my-av" id="p1-my-av"></div>
+          <div><div class="my-name" id="p1-my-name">—</div><div class="my-role" id="p1-my-role">—</div></div>
+        </div>
+        <span class="timer-badge timer-hot" id="p1-timer">—</span>
+      </div>
+      <div class="timer-bar-w"><div class="timer-bar" id="p1-timer-bar" style="width:100%;background:#378ADD;"></div></div>
+      <div id="p1-action-zone"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: PHASE 1 FIN -->
+<div id="screen-phase1-fin" class="screen">
+  <div class="center-wrap"><div class="fin-card">
+    <div class="fin-icon">🏁</div>
+    <span class="phase-pill" style="background:#E6F1FB;color:#0C447C;">Fase 1 completada</span>
+    <div class="section-title" id="p1fin-title">¡Equipo A ganó!</div>
+    <p class="section-sub" id="p1fin-sub">Adivinaron las 6 palabras primero.</p>
+    <div class="fin-stats" id="p1fin-stats"></div>
+    <p style="font-size:11px;color:#aaa;margin-bottom:18px;">Esperando que el moderador inicie la Fase 2...</p>
+    <button class="btn btn-dark hidden" id="p1fin-btn" onclick="startPhase2()">Continuar a Fase 2 →</button>
+    <p class="mod-note hidden" id="p1fin-modnote">Solo el moderador ve este botón</p>
+  </div></div>
+</div>
+
+<!-- SCREEN: PHASE 2 -->
+<div id="screen-phase2" class="screen">
+  <div class="game-wrap">
+    <div class="topbar">
+      <span class="pbadge pb2">Fase 2 — El Escritorio</span>
+      <div id="p2-other-status" style="font-size:11px;color:#888;"></div>
+      <div><span class="score-display" id="p2-score">0 pts</span></div>
+    </div>
+    <div class="cols2">
+      <div class="panel" style="display:flex;flex-direction:column;">
+        <div class="panel-head"><span class="pname-a" id="p2-team-a-label">Equipo A</span><span style="font-size:10px;font-weight:700;background:#EEEDFE;color:#3C3489;padding:2px 7px;border-radius:20px;">Fase 2</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:8px;" id="p2-team-a-panel">
+          <div class="writing-ind" id="p2-a-writing-ind" style="display:none;"><div class="wi-dot"></div>Escribiendo...</div>
+          <div class="timer-big" id="p2-timer-a" style="color:#3C3489;">—</div>
+          <div class="timer-bar-full"><div class="timer-bar-fill" id="p2-bar-a" style="width:100%;"></div></div>
+        </div>
+      </div>
+      <div class="panel" style="display:flex;flex-direction:column;">
+        <div class="panel-head"><span class="pname-b" id="p2-team-b-label">Equipo B</span><span id="p2-team-b-badge" style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:#E6F1FB;color:#0C447C;">Esperando</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;gap:8px;" id="p2-team-b-panel">
+          <div class="timer-big" id="p2-timer-b" style="color:#3C3489;">—</div>
+          <div class="timer-bar-full"><div class="timer-bar-fill" id="p2-bar-b" style="width:100%;"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="bottom">
+      <div class="bh">
+        <div class="bi">
+          <div class="my-av" id="p2-my-av"></div>
+          <div><div class="my-name" id="p2-my-name">—</div><div class="my-role" id="p2-my-role">—</div></div>
+        </div>
+        <span class="timer-badge" id="p2-my-timer" style="background:#EEEDFE;color:#3C3489;">—</span>
+      </div>
+      <div id="p2-action-zone"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: PHASE 2 FIN -->
+<div id="screen-phase2-fin" class="screen">
+  <div class="center-wrap"><div class="fin-card">
+    <div class="fin-icon">📝</div>
+    <span class="phase-pill" style="background:#EEEDFE;color:#3C3489;">Fase 2 completada</span>
+    <div class="section-title">Declaraciones guardadas</div>
+    <p class="section-sub">Nadie puede ver las declaraciones aún — se revelarán al final del juego.</p>
+    <div style="background:#f5f3ef;border-radius:9px;padding:13px;margin-bottom:18px;text-align:left;">
+      <div style="font-size:11px;color:#888;margin-bottom:7px;">Estado:</div>
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;"><div style="width:7px;height:7px;border-radius:50%;background:#0F6E56;"></div><span style="font-size:12px;">Equipo A — declaración enviada ✓</span></div>
+      <div style="display:flex;align-items:center;gap:7px;"><div style="width:7px;height:7px;border-radius:50%;background:#0F6E56;"></div><span style="font-size:12px;">Equipo B — declaración enviada ✓</span></div>
+    </div>
+    <button class="btn btn-dark hidden" id="p2fin-btn" onclick="startPhase3()">Continuar a Fase 3 →</button>
+    <p class="mod-note hidden" id="p2fin-modnote">Solo el moderador ve este botón</p>
+    <p style="font-size:12px;color:#aaa;margin-top:8px;" id="p2fin-wait">Esperando al moderador...</p>
+  </div></div>
+</div>
+
+<!-- SCREEN: PHASE 3 -->
+<div id="screen-phase3" class="screen">
+  <div class="game-wrap">
+    <div class="topbar">
+      <span class="pbadge pb3">Fase 3 — El Territorio</span>
+      <div style="display:flex;gap:7px;align-items:center;">
+        <span style="font-size:11px;font-weight:700;color:#0C447C;" id="p3-prog-a">A: 0/6</span>
+        <span style="color:#ddd;">·</span>
+        <span style="font-size:11px;font-weight:700;color:#085041;" id="p3-prog-b">B: 0/6</span>
+      </div>
+      <div><span class="score-display" id="p3-score">0 pts</span></div>
+    </div>
+    <div class="cols2">
+      <div class="panel">
+        <div class="panel-head">
+          <span class="pname-a">Historia Equipo A</span>
+          <div class="wu-row" id="p3-words-a"></div>
+        </div>
+        <div class="story-stream" id="p3-story-a"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <span class="pname-b">Historia Equipo B</span>
+          <div class="wu-row" id="p3-words-b"></div>
+        </div>
+        <div class="story-stream" id="p3-story-b"></div>
+      </div>
+    </div>
+    <div class="graph-panel">
+      <div class="gph-head">
+        <span class="gph-title">Grafo de red — en tiempo real</span>
+        <div class="gleg">
+          <div class="gli"><div class="gll" style="background:#378ADD;"></div>Equipo A</div>
+          <div class="gli"><div class="gll" style="background:#1D9E75;"></div>Equipo B</div>
+          <div class="gli"><div class="gll" style="background:#BA7517;"></div>Cruce</div>
+          <div class="gli"><div style="width:10px;height:10px;border-radius:50%;border:1.5px dashed #bbb;"></div>Fantasma</div>
+        </div>
+      </div>
+      <div style="padding:8px;"><svg id="p3-graph" viewBox="0 0 620 120" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:120px;"></svg></div>
+    </div>
+    <div class="bottom">
+      <div class="bh">
+        <div class="bi">
+          <div class="my-av" id="p3-my-av"></div>
+          <div><div class="my-name" id="p3-my-name">—</div><div class="my-role" id="p3-my-role">—</div></div>
+        </div>
+        <span class="timer-badge" id="p3-timer" style="background:#f0ede8;color:#888;">Observando</span>
+      </div>
+      <div class="timer-bar-w"><div class="timer-bar" id="p3-timer-bar" style="width:0%;background:#1D9E75;"></div></div>
+      <div id="p3-action-zone"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: PHASE 3 FIN -->
+<div id="screen-phase3-fin" class="screen">
+  <div class="center-wrap"><div class="fin-card">
+    <div class="fin-icon">🕸️</div>
+    <span class="phase-pill" style="background:#E1F5EE;color:#085041;">Fase 3 completada</span>
+    <div class="section-title">La red terminó de hablar</div>
+    <p class="section-sub">Las 6 palabras fueron usadas. Ahora viene el veredicto del desacoplamiento.</p>
+    <div class="fin-stats" id="p3fin-stats"></div>
+    <div style="background:#f0eeff;border-radius:9px;padding:12px;margin-bottom:18px;font-size:12px;color:#534AB7;line-height:1.6;">Ahora verás cómo quedó la historia en red comparada con la que escribió la Universidad sola.</div>
+    <button class="btn btn-dark hidden" id="p3fin-btn" onclick="showDashboard()">Ver el veredicto →</button>
+    <p class="mod-note hidden" id="p3fin-modnote">Solo el moderador ve este botón</p>
+    <p style="font-size:12px;color:#aaa;margin-top:8px;" id="p3fin-wait">Esperando al moderador...</p>
+  </div></div>
+</div>
+
+<!-- SCREEN: DASHBOARD -->
+<div id="screen-dashboard" class="screen">
+  <div class="dash" id="dashboard-content">
+    <div class="dash-hdr">
+      <div class="dh-title">El Veredicto del Desacoplamiento</div>
+      <div class="dh-sub">Tres dimensiones · dos equipos · un solo hallazgo</div>
+    </div>
+    <div id="dash-scores" class="score-grid"></div>
+    <div id="dash-declarada" class="dim-sec"></div>
+    <div id="dash-practicada" class="dim-sec"></div>
+    <div id="dash-subyacente" class="dim-sec"></div>
+    <div id="dash-grafo" class="dim-sec"></div>
+    <div class="verd">
+      <div class="vd-lbl">El veredicto</div>
+      <div class="vd-cols" id="dash-verd-cols"></div>
+      <div class="vd-winner hs" id="dash-winner"></div>
+      <button class="btn-reveal br-hid" id="btn-reveal-sub" onclick="revealSubyacente()">Revelar puntaje subyacente →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== STATE ====================
+const socket = io();
+let myId = null;
+let myName = '';
+let myRole = null;
+let myRoleLabel = '';
+let myTeam = null;
+let myColor = '#ddd';
+let myTextColor = '#333';
+let isModerator = false;
+let gameState = {};
+let p1TimerInterval = null;
+let p1TimeLeft = 30;
+let p2TimerInterval = null;
+let p2TimeLeft = 180;
+let p3TimerInterval = null;
+let p3TimeLeft = 60;
+let currentEmojiStr = '';
+let selectedNextPlayer = null;
+let currentHintIndex = 0;
+let p1HintsUsed = 0;
+let dashboardData = null;
+let subyacenteRevealed = false;
+
+// ==================== UTILS ====================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function showNotif(msg, duration = 3000) {
+  const n = document.createElement('div');
+  n.className = 'notif';
+  n.textContent = msg;
+  document.body.appendChild(n);
+  setTimeout(() => n.remove(), duration);
+}
+
+function makePd(i, state) {
+  const d = document.createElement('div');
+  d.className = 'pd' + (state === 'done' ? ' done' : state === 'cur' ? ' cur' : '');
+  d.textContent = i + 1;
+  return d;
+}
+
+function makeAv(initials, color, textColor, size = 24) {
+  const d = document.createElement('div');
+  d.className = 'av';
+  d.style.background = color;
+  d.style.color = textColor;
+  d.style.width = size + 'px';
+  d.style.height = size + 'px';
+  d.style.fontSize = Math.floor(size * 0.38) + 'px';
+  d.textContent = initials;
+  return d;
+}
+
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+function highlightWord(text, word, cls) {
+  if (!word) return text;
+  const re = new RegExp('(' + word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+  return text.replace(re, '<span class="' + cls + '">$1</span>');
+}
+
+// ==================== JOIN ====================
+function joinGame(asMod) {
+  const name = document.getElementById('player-name').value.trim();
+  if (!name) { showNotif('Escribe tu nombre primero'); return; }
+  myName = name;
+  isModerator = asMod;
+  socket.emit('player:join', { name, isModerator: asMod });
+}
+
+// ==================== SOCKET EVENTS ====================
+
+socket.on('player:joined', ({ id, name }) => {
+  myId = id;
+  if (isModerator) {
+    showScreen('screen-lobby');
+  } else {
+    document.getElementById('rol-player-name').textContent = name;
+    showScreen('screen-rol');
+  }
+});
+
+socket.on('lobby:update', (state) => {
+  gameState = state;
+  updateLobby(state);
+});
+
+socket.on('player:roleAssigned', ({ role, roleLabel, team, color, textColor }) => {
+  myRole = role;
+  myRoleLabel = roleLabel;
+  myTeam = team;
+  myColor = color;
+  myTextColor = textColor;
+  renderRolReveal();
+});
+
+socket.on('game:phaseChange', ({ phase, state, winner, scores }) => {
+  if (state) gameState = state;
+  if (phase === 'roleReveal') {
+    if (!isModerator) {
+      document.getElementById('rol-player-name').textContent = myName;
+      showScreen('screen-rol');
+    }
+    return;
+  }
+  if (phase === 'phase1') { initPhase1(); return; }
+  if (phase === 'phase1Done') { showPhase1Fin(winner, scores); return; }
+  if (phase === 'phase2Done') { showPhase2Fin(); return; }
+  if (phase === 'phase3') { initPhase3(); return; }
+});
+
+socket.on('game:scoresUpdate', (scores) => {
+  gameState.scores = scores;
+  updateScoreDisplays(scores);
+});
+
+// ==================== LOBBY ====================
+function updateLobby(state) {
+  if (!state) return;
+  const players = Object.values(state.players).filter(p => !p.isModerator);
+  document.getElementById('lobby-count').textContent = players.length + ' jugadores conectados';
+  document.getElementById('mod-total').textContent = players.length;
+  const unis = players.filter(p => p.role === 'universidad').length;
+  document.getElementById('mod-unis').textContent = unis;
+
+  const teamA = (state.teamA || []).map(id => state.players[id]).filter(Boolean);
+  const teamB = (state.teamB || []).map(id => state.players[id]).filter(Boolean);
+  document.getElementById('team-a-count').textContent = teamA.length + ' jugadores';
+  document.getElementById('team-b-count').textContent = teamB.length + ' jugadores';
+
+  renderPlayerList('team-a-list', teamA, state.teamA && state.teamA.length > 0);
+  renderPlayerList('team-b-list', teamB, state.teamB && state.teamB.length > 0);
+}
+
+function renderPlayerList(containerId, players, showRoles) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  players.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'player-row';
+    const av = makeAv(p.initials, p.color, p.textColor, 32);
+    av.className = 'pav';
+    const name = document.createElement('span');
+    name.className = 'pname';
+    name.textContent = p.name;
+    row.appendChild(av);
+    row.appendChild(name);
+    if (showRoles && p.roleLabel) {
+      const role = document.createElement('span');
+      role.className = 'prole-badge';
+      role.style.background = p.color;
+      role.style.color = p.textColor;
+      role.textContent = p.roleLabel;
+      row.appendChild(role);
+    }
+    el.appendChild(row);
+  });
+}
+
+function startGame() {
+  socket.emit('moderator:startGame');
+  setTimeout(() => socket.emit('moderator:startPhase1'), 3000);
+}
+
+// ==================== ROL REVEAL ====================
+function renderRolReveal() {
+  const box = document.getElementById('rol-box');
+  const rolColors = {
+    universidad: { bg:'#E6F1FB', border:'#B5D4F4', nameC:'#0C447C', badge:'Actor Central', badgeBg:'#E6F1FB', badgeC:'#0C447C' },
+    gobierno:    { bg:'#FAEEDA', border:'#FAC775', nameC:'#633806', badge:'Actor Territorial', badgeBg:'#FAEEDA', badgeC:'#633806' },
+    empresa:     { bg:'#FBEAF0', border:'#F4C0D1', nameC:'#72243E', badge:'Actor Privado', badgeBg:'#FBEAF0', badgeC:'#72243E' },
+    org_civil:   { bg:'#EEEDFE', border:'#CECBF6', nameC:'#3C3489', badge:'Actor Social', badgeBg:'#EEEDFE', badgeC:'#3C3489' },
+    comunidad:   { bg:'#E1F5EE', border:'#9FE1CB', nameC:'#085041', badge:'Actor Territorial', badgeBg:'#E1F5EE', badgeC:'#085041' }
+  };
+  const descs = {
+    universidad: 'Eres la institución que declara su función ambiental. En Fase 2 escribirás la política oficial. En Fase 3 abrirás la red.',
+    gobierno:    'Representas la institucionalidad pública. Tienes poder de decisión sobre el territorio, pero también de omisión.',
+    empresa:     'Representas los intereses productivos. Tu participación en la red define si hay compromiso real o solo discurso.',
+    org_civil:   'Eres la voz organizada de la sociedad civil. Si nadie te pasa la posta en Fase 3, te convertirás en nodo fantasma.',
+    comunidad:   'Representas el territorio real, no el declarado. Tu presencia en el grafo final revela si la universidad realmente te incluyó.'
+  };
+  const c = rolColors[myRole] || rolColors.comunidad;
+  box.style.background = c.bg;
+  box.style.borderColor = c.border;
+  box.innerHTML = '<span class="phase-pill" style="background:' + c.badgeBg + ';color:' + c.badgeC + ';">' + c.badge + '</span>' +
+    '<div class="rol-name" style="color:' + c.nameC + ';">' + (myRoleLabel || 'Jugador') + '</div>' +
+    '<p class="rol-desc">' + (descs[myRole] || '') + '</p>' +
+    '<p style="font-size:12px;color:#666;margin-top:10px;">Equipo <strong>' + myTeam + '</strong></p>';
+}
+
+// ==================== PHASE 1 ====================
+function initPhase1() {
+  showScreen('screen-phase1');
+
+  // Setup my info
+  const myP = gameState.players ? gameState.players[myId] : null;
+  if (myP) {
+    const avEl = document.getElementById('p1-my-av');
+    avEl.style.background = myColor;
+    avEl.style.color = myTextColor;
+    avEl.textContent = myP.initials;
+    document.getElementById('p1-my-name').textContent = myP.name;
+    document.getElementById('p1-my-role').textContent = myRoleLabel + ' · Equipo ' + myTeam;
+  }
+
+  const badge = document.getElementById('p1-badge');
+  badge.textContent = 'Fase 1 · Equipo ' + myTeam;
+  badge.className = 'pbadge pb1';
+
+  const myTeamName = document.getElementById('p1-my-team-name');
+  myTeamName.textContent = 'Equipo ' + myTeam;
+  myTeamName.className = myTeam === 'A' ? 'pname-a' : 'pname-b';
+
+  renderP1Progress(0, 0, 0, 0);
+  renderP1ActionZone('observer');
+  document.getElementById('p1-timer').textContent = '—';
+}
+
+function renderP1Progress(doneA, doneB, scorA, scorB) {
+  const myDone = myTeam === 'A' ? doneA : doneB;
+  const otherDone = myTeam === 'A' ? doneB : doneA;
+  const myScore = myTeam === 'A' ? scorA : scorB;
+  const otherScore = myTeam === 'A' ? scorB : scorA;
+
+  const myProg = document.getElementById('p1-prog-my');
+  const otherProg = document.getElementById('p1-prog-other');
+  myProg.innerHTML = '';
+  otherProg.innerHTML = '';
+
+  for (let i = 0; i < 6; i++) {
+    myProg.appendChild(makePd(i, i < myDone ? 'done' : i === myDone ? 'cur' : 'empty'));
+    otherProg.appendChild(makePd(i, i < otherDone ? 'done' : i === otherDone ? 'cur' : 'empty'));
+  }
+
+  document.getElementById('p1-score').textContent = myScore + ' pts';
+  const otherPts = document.getElementById('p1-other-pts');
+  otherPts.textContent = otherScore;
+  const otherLabel = document.getElementById('p1-other-label');
+  if (otherScore > myScore) {
+    otherPts.style.color = '#c0392b';
+    otherLabel.textContent = 'puntos · van adelante';
+    otherLabel.style.color = '#c0392b';
+  } else if (otherScore < myScore) {
+    otherPts.style.color = '#0F6E56';
+    otherLabel.textContent = 'puntos · van atrás';
+    otherLabel.style.color = '#0F6E56';
+  } else {
+    otherPts.style.color = '#1a1a1a';
+    otherLabel.textContent = 'puntos · empate';
+    otherLabel.style.color = '#888';
+  }
+
+  const otherOtherProg = document.getElementById('p1-other-prog') || document.createElement('div');
+  otherOtherProg.id = 'p1-other-prog';
+  if (!document.getElementById('p1-other-prog')) {
+    document.querySelector('.other-panel-body').prepend(otherOtherProg);
+  }
+  otherOtherProg.innerHTML = '';
+  for (let i = 0; i < 6; i++) {
+    const pd = document.createElement('div');
+    pd.style.cssText = 'width:24px;height:24px;border-radius:50%;border:1.5px solid #ddd;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#bbb;margin:0 2px;';
+    if (i < otherDone) { pd.style.background = '#E1F5EE'; pd.style.borderColor = '#9FE1CB'; pd.style.color = '#085041'; }
+    else if (i === otherDone) { pd.style.background = '#E6F1FB'; pd.style.borderColor = '#B5D4F4'; pd.style.color = '#0C447C'; }
+    pd.textContent = i + 1;
+    otherOtherProg.appendChild(pd);
+  }
+}
+
+socket.on('phase1:turnUpdate', ({ team, turn, wordIndex, scores, passes }) => {
+  if (team !== myTeam) return;
+  gameState.scores = scores;
+  renderP1Progress(
+    team === 'A' ? wordIndex : 0,
+    team === 'B' ? wordIndex : 0,
+    scores.A, scores.B
+  );
+
+  const turnText = document.getElementById('p1-turn-text');
+  const mimePlayer = gameState.players ? gameState.players[turn.mime] : null;
+  const guessPlayer = gameState.players ? gameState.players[turn.guesser] : null;
+  turnText.textContent = (mimePlayer ? mimePlayer.name : '?') + ' mima · ' + (guessPlayer ? guessPlayer.name : '?') + ' adivina';
+
+  if (turn.mime === myId) {
+    renderP1ActionZone('mime');
+    startP1Timer();
+  } else if (turn.guesser === myId) {
+    renderP1ActionZone('guesser');
+    startP1Timer();
+    p1HintsUsed = 0;
+  } else {
+    renderP1ActionZone('observer');
+    stopP1Timer();
+  }
+
+  renderP1Queue(turn, team);
+});
+
+socket.on('phase1:yourTurn', ({ role, word, hints }) => {
+  if (role === 'mime') {
+    renderP1ActionZone('mime', word);
+    startP1Timer();
+  } else if (role === 'guesser') {
+    renderP1ActionZone('guesser');
+    startP1Timer();
+  }
+});
+
+socket.on('phase1:emojiReceived', ({ from, fromName, emoji, team }) => {
+  if (team !== myTeam) return;
+  addChatMsg({
+    avColor: gameState.players?.[from]?.color || '#ddd',
+    avTextColor: gameState.players?.[from]?.textColor || '#333',
+    initials: gameState.players?.[from]?.initials || '?',
+    roleTag: 'pista',
+    roleClass: 'rtm',
+    content: '<div class="eb">' + emoji + '</div>'
+  });
+});
+
+socket.on('phase1:guessAttempt', ({ from, fromName, guess, correct, team }) => {
+  if (team !== myTeam) return;
+  addChatMsg({
+    avColor: gameState.players?.[from]?.color || '#ddd',
+    avTextColor: gameState.players?.[from]?.textColor || '#333',
+    initials: gameState.players?.[from]?.initials || '?',
+    roleTag: 'intento',
+    roleClass: 'rtg',
+    content: correct
+      ? '<span class="guess-ok">¡' + guess + '! ✓</span>'
+      : '<span class="guess-try">' + guess + '</span>'
+  });
+});
+
+socket.on('phase1:wordGuessed', ({ index, wordNumber, team, byPlayer, scores }) => {
+  if (team !== myTeam) return;
+  addChatMsg({
+    system: true,
+    content: 'Palabra ' + wordNumber + ' adivinada por <b>' + byPlayer + '</b> ✓'
+  });
+  gameState.scores = scores;
+});
+
+socket.on('phase1:wordRevealed', ({ word, index }) => {
+  // Only universidad receives this
+  const box = document.getElementById('p1-action-zone');
+  const uniBox = box.querySelector('.uni-words-box');
+  if (!uniBox) return;
+  const list = uniBox.querySelector('.uni-words-list');
+  if (list) {
+    const span = document.createElement('span');
+    span.className = 'uni-word';
+    span.textContent = word;
+    const pending = list.children[index];
+    if (pending) list.replaceChild(span, pending);
+    else list.appendChild(span);
+  }
+});
+
+socket.on('phase1:hint', ({ hint, hintIndex }) => {
+  const hintDisp = document.getElementById('p1-hint-display');
+  if (hintDisp) {
+    hintDisp.textContent = '💡 ' + hint;
+    hintDisp.className = 'hint-text';
+    hintDisp.style.display = 'inline-block';
+  }
+  p1HintsUsed = hintIndex + 1;
+  // Disable used hint buttons
+  for (let i = 0; i <= hintIndex; i++) {
+    const btn = document.getElementById('hint-btn-' + i);
+    if (btn) btn.disabled = true;
+  }
+});
+
+socket.on('phase1:teamFinished', ({ team, scores, guessedWords, passes }) => {
+  gameState.scores = scores;
+  if (team === myTeam) {
+    showNotif('¡Tu equipo terminó la Fase 1!');
+  } else {
+    showNotif('El equipo rival terminó la Fase 1');
+  }
+});
+
+function startP1Timer() {
+  p1TimeLeft = 30;
+  if (p1TimerInterval) clearInterval(p1TimerInterval);
+  updateP1Timer();
+  p1TimerInterval = setInterval(() => {
+    p1TimeLeft--;
+    updateP1Timer();
+    if (p1TimeLeft <= 0) stopP1Timer();
+  }, 1000);
+}
+
+function stopP1Timer() {
+  if (p1TimerInterval) { clearInterval(p1TimerInterval); p1TimerInterval = null; }
+}
+
+function updateP1Timer() {
+  const el = document.getElementById('p1-timer');
+  const bar = document.getElementById('p1-timer-bar');
+  el.textContent = '0:' + (p1TimeLeft < 10 ? '0' : '') + p1TimeLeft;
+  el.className = 'timer-badge ' + (p1TimeLeft <= 10 ? 'timer-hot' : 'timer-ok');
+  if (bar) bar.style.width = (p1TimeLeft / 30 * 100) + '%';
+}
+
+function addChatMsg({ avColor, avTextColor, initials, roleTag, roleClass, content, system }) {
+  const chat = document.getElementById('p1-chat');
+  if (!chat) return;
+  const div = document.createElement('div');
+  if (system) {
+    div.className = 'msg';
+    div.style.paddingLeft = '30px';
+    const b = document.createElement('div');
+    b.className = 'bub bs';
+    b.innerHTML = '<div class="sysmsg">' + content + '</div>';
+    div.appendChild(b);
+  } else {
+    div.className = 'msg';
+    const av = makeAv(initials, avColor, avTextColor, 24);
+    const bub = document.createElement('div');
+    bub.className = 'bub be';
+    bub.innerHTML = '<div class="rtag ' + (roleClass || '') + '">' + (roleTag || '') + '</div>' + content;
+    div.appendChild(av);
+    div.appendChild(bub);
+  }
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function renderP1Queue(turn, team) {
+  const queueEl = document.getElementById('p1-queue');
+  queueEl.innerHTML = '<span class="ql">Fila:</span>';
+  if (!gameState.players) return;
+
+  const mime = gameState.players[turn.mime];
+  const guesser = gameState.players[turn.guesser];
+
+  if (mime) {
+    const qp = document.createElement('div');
+    qp.className = 'qp';
+    const qa = document.createElement('div');
+    qa.className = 'qav qm';
+    qa.style.background = mime.color;
+    qa.style.color = mime.textColor;
+    qa.textContent = mime.initials;
+    const qt = document.createElement('div');
+    qt.className = 'qtag qtm';
+    qt.textContent = mime.id === myId ? 'tú — mimas' : 'mímica';
+    qp.appendChild(qa);
+    qp.appendChild(qt);
+    queueEl.appendChild(qp);
+  }
+
+  const arr = document.createElement('span');
+  arr.className = 'qarr';
+  arr.textContent = '→';
+  queueEl.appendChild(arr);
+
+  if (guesser) {
+    const qp = document.createElement('div');
+    qp.className = 'qp';
+    const qa = document.createElement('div');
+    qa.className = 'qav qg';
+    qa.style.background = guesser.color;
+    qa.style.color = guesser.textColor;
+    qa.textContent = guesser.initials;
+    const qt = document.createElement('div');
+    qt.className = 'qtag qtg';
+    qt.textContent = guesser.id === myId ? 'tú — adivinas' : 'adivina';
+    qp.appendChild(qa);
+    qp.appendChild(qt);
+    queueEl.appendChild(qp);
+  }
+}
+
+function renderP1ActionZone(role, secretWord) {
+  const zone = document.getElementById('p1-action-zone');
+
+  if (role === 'mime') {
+    currentEmojiStr = '';
+    zone.innerHTML =
+      '<div class="banner ban-mime">Haces mímica — solo emojis, sin letras ni palabras</div>' +
+      '<div class="secret-word-box">' +
+        '<div class="sw-label">Tu palabra secreta (solo tú la ves)</div>' +
+        '<div class="sw-word" id="p1-secret-word">' + (secretWord || '...') + '</div>' +
+        '<div class="sw-note">30 segundos por turno</div>' +
+      '</div>' +
+      '<div class="ekb" id="p1-ekb"></div>' +
+      '<div class="ecomp">' +
+        '<div class="eprev" id="p1-eprev"></div>' +
+        '<button class="btnx" onclick="clearEmoji()">✕</button>' +
+        '<button class="btns" onclick="sendEmoji()">Enviar →</button>' +
+      '</div>';
+    renderEmojiKeyboard();
+  } else if (role === 'guesser') {
+    zone.innerHTML =
+      '<div class="banner ban-guess">Adivinas — escribe la palabra que crees que es</div>' +
+      '<p class="pnote" id="p1-pnote">Si pasas, la palabra vuelve al banco · −3 pts</p>' +
+      '<div class="guess-row">' +
+        '<input type="text" class="guess-input" id="p1-guess-input" placeholder="¿Cuál es la palabra?..." onkeydown="if(event.key===\'Enter\')confirmGuess()">' +
+        '<button class="btn-pass" onclick="passP1()">Pasar (−3 pts)</button>' +
+      '</div>' +
+      '<button class="btn-confirm" onclick="confirmGuess()">Confirmar respuesta →</button>' +
+      '<div class="hints-row" id="p1-hints-row">' +
+        '<span class="hint-label">Pistas (−5 pts c/u):</span>' +
+        '<button class="hint-btn" id="hint-btn-0" onclick="requestHint(0)">Pista 1</button>' +
+        '<button class="hint-btn" id="hint-btn-1" onclick="requestHint(1)">Pista 2</button>' +
+        '<button class="hint-btn" id="hint-btn-2" onclick="requestHint(2)">Pista 3</button>' +
+        '<button class="hint-btn" id="hint-btn-3" onclick="requestHint(3)">Pista 4</button>' +
+        '<span id="p1-hint-display" style="display:none;"></span>' +
+      '</div>';
+  } else if (role === 'observer') {
+    if (myRole === 'universidad') {
+      // Universidad sees accumulated words
+      const words = Array(6).fill(null);
+      zone.innerHTML =
+        '<div class="banner ban-uni">Universidad · juegas igual que todos — y acumulas las palabras reales</div>' +
+        '<div class="uni-words-box">' +
+          '<div class="uni-words-title">Palabras acumuladas — solo tú las ves</div>' +
+          '<div class="uni-words-list" id="p1-uni-words">' +
+            words.map((_, i) => '<span class="uni-word uni-word-pend">palabra ' + (i+1) + '...</span>').join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="spec-box"><div class="spec-t">Observas este turno</div><div class="spec-s">Juegas en la fila como todos. Cuando sea tu turno, mimas o adivinas.</div></div>';
+    } else {
+      zone.innerHTML =
+        '<div class="banner ban-obs">Observas este turno — estás en la fila</div>' +
+        '<div class="spec-box"><div class="spec-t">Prepárate</div><div class="spec-s">Cuando sea tu turno, verás aquí si mimas o adivinas.</div></div>' +
+        '<div class="stat-row">' +
+          '<div class="stat"><div class="sv" style="color:#0C447C;" id="obs-score-a">0</div><div class="sl">pts equipo A</div></div>' +
+          '<div class="stat"><div class="sv" style="color:#085041;" id="obs-score-b">0</div><div class="sl">pts equipo B</div></div>' +
+        '</div>';
+      if (gameState.scores) {
+        const a = document.getElementById('obs-score-a');
+        const b = document.getElementById('obs-score-b');
+        if (a) a.textContent = gameState.scores.A;
+        if (b) b.textContent = gameState.scores.B;
+      }
+    }
+  }
+}
+
+function renderEmojiKeyboard() {
+  const emojis = ['🌿','🌍','♻️','🌱','🌳','🐾','💧','☀️','🌬️','🔥','🌊','🦋','🏔️','🌾','🏡','👥','🤝','🔗','📋','⚖️','💡','🔄','⚙️','📈','🌐','🏛️','🤲','🌺','🍃','🌲','❤️','⏳','🔑','🚀','💬','🛤️'];
+  const kb = document.getElementById('p1-ekb');
+  if (!kb) return;
+  kb.innerHTML = '';
+  emojis.forEach(e => {
+    const btn = document.createElement('span');
+    btn.className = 'ek';
+    btn.textContent = e;
+    btn.onclick = () => { currentEmojiStr += e; document.getElementById('p1-eprev').textContent = currentEmojiStr; };
+    kb.appendChild(btn);
+  });
+}
+
+function clearEmoji() {
+  currentEmojiStr = '';
+  const prev = document.getElementById('p1-eprev');
+  if (prev) prev.textContent = '';
+}
+
+function sendEmoji() {
+  if (!currentEmojiStr) return;
+  socket.emit('phase1:sendEmoji', { emoji: currentEmojiStr });
+  clearEmoji();
+  addChatMsg({
+    avColor: myColor,
+    avTextColor: myTextColor,
+    initials: gameState.players?.[myId]?.initials || '?',
+    roleTag: 'pista',
+    roleClass: 'rtm',
+    content: '<div class="eb">' + currentEmojiStr + '</div>'
+  });
+}
+
+function confirmGuess() {
+  const input = document.getElementById('p1-guess-input');
+  if (!input || !input.value.trim()) return;
+  socket.emit('phase1:guess', { guess: input.value.trim() });
+  input.value = '';
+}
+
+function passP1() {
+  socket.emit('phase1:pass');
+  stopP1Timer();
+}
+
+function requestHint(idx) {
+  socket.emit('phase1:requestHint', { hintIndex: idx });
+}
+
+function showPhase1Fin(winner, scores) {
+  stopP1Timer();
+  showScreen('screen-phase1-fin');
+  const title = document.getElementById('p1fin-title');
+  const sub = document.getElementById('p1fin-sub');
+  if (winner === myTeam) {
+    title.textContent = '¡Tu equipo ganó la Fase 1!';
+    sub.textContent = 'Adivinaron las 6 palabras primero. +30 segundos de ventaja en Fase 2.';
+  } else {
+    title.textContent = 'El Equipo ' + winner + ' ganó la Fase 1';
+    sub.textContent = 'Adivinaron las 6 palabras primero. Sigan a Fase 2.';
+  }
+  const stats = document.getElementById('p1fin-stats');
+  stats.innerHTML =
+    '<div class="fst"><div class="fsv" style="color:#0C447C;">' + scores.A + '</div><div class="fsl">pts Equipo A</div></div>' +
+    '<div class="fst"><div class="fsv" style="color:#085041;">' + scores.B + '</div><div class="fsl">pts Equipo B</div></div>';
+
+  if (isModerator) {
+    document.getElementById('p1fin-btn').classList.remove('hidden');
+    document.getElementById('p1fin-modnote').classList.remove('hidden');
+  }
+}
+
+function startPhase2() {
+  socket.emit('moderator:startPhase2');
+}
+
+// ==================== PHASE 2 ====================
+socket.on('game:phaseChange', ({ phase }) => {
+  if (phase === 'phase2') initPhase2();
+});
+
+socket.on('moderator:startPhase2', initPhase2);
+
+function initPhase2() {
+  showScreen('screen-phase2');
+
+  const myP = gameState.players?.[myId];
+  if (myP) {
+    const avEl = document.getElementById('p2-my-av');
+    avEl.style.background = myColor;
+    avEl.style.color = myTextColor;
+    avEl.textContent = myP.initials;
+    document.getElementById('p2-my-name').textContent = myP.name;
+    document.getElementById('p2-my-role').textContent = myRoleLabel + ' · Equipo ' + myTeam;
+  }
+
+  const totalTime = gameState.phase2?.['time' + myTeam] || 180;
+  p2TimeLeft = totalTime;
+
+  if (myRole === 'universidad') {
+    renderP2UniZone();
+    startP2Timer(totalTime);
+  } else {
+    renderP2ObserverZone();
+  }
+}
+
+socket.on('phase2:timerUpdate', ({ team, timeLeft }) => {
+  if (team === 'A') {
+    const el = document.getElementById('p2-timer-a');
+    const bar = document.getElementById('p2-bar-a');
+    if (el) el.textContent = fmtTime(timeLeft);
+    if (bar) bar.style.width = (timeLeft / 210 * 100) + '%';
+  } else {
+    const el = document.getElementById('p2-timer-b');
+    const bar = document.getElementById('p2-bar-b');
+    if (el) el.textContent = fmtTime(timeLeft);
+    if (bar) bar.style.width = (timeLeft / 180 * 100) + '%';
+  }
+  const myEl = document.getElementById('p2-my-timer');
+  if (myEl && team === myTeam) myEl.textContent = fmtTime(timeLeft);
+});
+
+function startP2Timer(total) {
+  p2TimeLeft = total;
+  if (p2TimerInterval) clearInterval(p2TimerInterval);
+  p2TimerInterval = setInterval(() => {
+    p2TimeLeft--;
+    const fmt = fmtTime(p2TimeLeft);
+    const timerEl = document.getElementById('p2-timer-' + myTeam.toLowerCase());
+    const barEl = document.getElementById('p2-bar-' + myTeam.toLowerCase());
+    const myTimer = document.getElementById('p2-my-timer');
+    if (timerEl) timerEl.textContent = fmt;
+    if (barEl) barEl.style.width = (p2TimeLeft / total * 100) + '%';
+    if (myTimer) myTimer.textContent = fmt;
+
+    socket.emit('phase2:timerTick', { team: myTeam, timeLeft: p2TimeLeft });
+
+    if (p2TimeLeft <= 0) {
+      clearInterval(p2TimerInterval);
+      autoSubmitDeclaration();
+    }
+  }, 1000);
+}
+
+function renderP2UniZone() {
+  const zone = document.getElementById('p2-action-zone');
+  // Get my team's words from phase 1
+  const words = gameState.phase1?.['guessed' + myTeam] || [];
+
+  const wordChips = words.map(w =>
+    '<span class="wr-word" id="wr-' + w + '">' + w + '</span>'
+  ).join('');
+
+  zone.innerHTML =
+    '<div class="banner ban-uni">Universidad — escribe la Política de Compromiso Ambiental con las 6 palabras</div>' +
+    '<div class="wr-box"><div class="wr-label">Tus 6 palabras — solo tú las ves</div><div class="wr-words">' + wordChips + '</div></div>' +
+    '<textarea id="p2-decl-text" class="write-input" style="min-height:90px;border-color:#CECBF6;" placeholder="Escribe la Política de Compromiso Ambiental de tu universidad. Debes incluir las 6 palabras..." oninput="checkDeclWords()"></textarea>' +
+    '<div class="charcount" id="p2-word-check">Incluye las 6 palabras en tu declaración</div>' +
+    '<div class="brow">' +
+      '<button class="btn-send-decl" id="p2-btn-send" onclick="submitDeclaration(false)">Enviar declaración →</button>' +
+    '</div>';
+}
+
+function checkDeclWords() {
+  const text = document.getElementById('p2-decl-text')?.value.toLowerCase() || '';
+  const words = gameState.phase1?.['guessed' + myTeam] || [];
+  const used = words.filter(w => text.includes(w.toLowerCase()));
+  const missing = words.filter(w => !text.includes(w.toLowerCase()));
+  const el = document.getElementById('p2-word-check');
+  if (el) {
+    el.textContent = used.length > 0
+      ? used.join(' ✓ · ') + ' ✓' + (missing.length > 0 ? ' · faltan: ' + missing.join(', ') : ' · ¡todas usadas!')
+      : 'Incluye las 6 palabras en tu declaración';
+  }
+  // Highlight used words
+  words.forEach(w => {
+    const chip = document.getElementById('wr-' + w);
+    if (chip) chip.classList.toggle('used', text.includes(w.toLowerCase()));
+  });
+}
+
+function submitDeclaration(isAuto) {
+  const text = isAuto
+    ? '[AUTOMÁTICO] La universidad asume su compromiso con la reducción del carbono y la protección del ecosistema mediante la gobernanza participativa del campus, fomentando la transición hacia la neutralidad ecológica con base en la comunidad territorial.'
+    : (document.getElementById('p2-decl-text')?.value || '');
+  if (!text.trim()) { showNotif('Escribe tu declaración primero'); return; }
+  clearInterval(p2TimerInterval);
+  socket.emit('phase2:submitDeclaration', { text, isAuto });
+  const zone = document.getElementById('p2-action-zone');
+  zone.innerHTML = '<div class="banner ban-uni">✓ Declaración enviada — esperando al otro equipo...</div>';
+}
+
+function autoSubmitDeclaration() {
+  const text = document.getElementById('p2-decl-text')?.value || '';
+  if (text.trim()) submitDeclaration(false);
+}
+
+function renderP2ObserverZone() {
+  const zone = document.getElementById('p2-action-zone');
+  const uniPlayer = (myTeam === 'A' ? gameState.teamA : gameState.teamB)
+    ?.map(id => gameState.players?.[id]).find(p => p?.role === 'universidad');
+  const uniName = uniPlayer ? uniPlayer.name : 'la Universidad';
+
+  zone.innerHTML =
+    '<div class="banner ban-obs">Observas · ' + uniName + ' está escribiendo la declaración oficial</div>' +
+    '<div style="text-align:center;padding:14px 0 10px;">' +
+      '<div class="writing-ind"><div class="wi-dot"></div>' + uniName + ' está escribiendo...</div>' +
+      '<div class="obs-timer-big" id="p2-obs-timer">—</div>' +
+      '<div style="font-size:12px;color:#aaa;margin-top:8px;line-height:1.6;">No puedes ver lo que escribe.<br>La declaración es secreta hasta el final del juego.</div>' +
+    '</div>';
+}
+
+socket.on('phase2:declarationReceived', ({ team }) => {
+  if (team === myTeam) {
+    showNotif('Declaración de tu equipo enviada ✓');
+  }
+});
+
+function showPhase2Fin() {
+  clearInterval(p2TimerInterval);
+  showScreen('screen-phase2-fin');
+  if (isModerator) {
+    document.getElementById('p2fin-btn').classList.remove('hidden');
+    document.getElementById('p2fin-modnote').classList.remove('hidden');
+    document.getElementById('p2fin-wait').classList.add('hidden');
+  }
+}
+
+function startPhase3() {
+  socket.emit('moderator:startPhase3');
+}
+
+// ==================== PHASE 3 ====================
+function initPhase3() {
+  showScreen('screen-phase3');
+
+  const myP = gameState.players?.[myId];
+  if (myP) {
+    const avEl = document.getElementById('p3-my-av');
+    avEl.style.background = myColor;
+    avEl.style.color = myTextColor;
+    avEl.textContent = myP.initials;
+    document.getElementById('p3-my-name').textContent = myP.name;
+    document.getElementById('p3-my-role').textContent = myRoleLabel + ' · Equipo ' + myTeam;
+  }
+
+  // Render word chips
+  renderP3Words('A', []);
+  renderP3Words('B', []);
+  document.getElementById('p3-action-zone').innerHTML =
+    '<div class="banner ban-obs">Observas · esperando que empiece la historia...</div>';
+}
+
+function renderP3Words(team, usedWords) {
+  const allWords = gameState.phase3?.['words' + team] || [];
+  const el = document.getElementById('p3-words-' + team.toLowerCase());
+  if (!el) return;
+  el.innerHTML = '';
+  allWords.forEach(w => {
+    const s = document.createElement('span');
+    s.className = 'wu wu-' + team.toLowerCase() + (usedWords.includes(w) ? ' done' : '');
+    s.textContent = w;
+    el.appendChild(s);
+  });
+}
+
+socket.on('phase3:storyUpdate', ({ team, story, usedWords, graph, scores }) => {
+  gameState.scores = scores;
+  updateScoreDisplays(scores);
+  renderStory(team, story, usedWords);
+  renderGraph(graph);
+
+  const prog = team === 'A' ? 'p3-prog-a' : 'p3-prog-b';
+  document.getElementById(prog).textContent = team + ': ' + usedWords.length + '/6';
+});
+
+socket.on('phase3:turnUpdate', ({ team, currentPlayer, currentPlayerName, word, isCross, story }) => {
+  if (story) renderStory(team, story, []);
+
+  // Show writing indicator
+  const streamId = 'p3-story-' + team.toLowerCase();
+  const stream = document.getElementById(streamId);
+  if (stream) {
+    const oldInd = stream.querySelector('.writing-indicator');
+    if (oldInd) oldInd.remove();
+    const ind = document.createElement('div');
+    ind.className = team === 'A' ? 'writing-now-a writing-indicator' : 'writing-now-b writing-indicator';
+    const dot = document.createElement('div');
+    dot.className = team === 'A' ? 'wdot-a' : 'wdot-b';
+    ind.appendChild(dot);
+    const txt = document.createTextNode((currentPlayerName || '?') + ' escribiendo "' + word + '"...');
+    ind.appendChild(txt);
+    stream.appendChild(ind);
+    stream.scrollTop = stream.scrollHeight;
+  }
+
+  // My turn?
+  if (currentPlayer === myId && !isCross) {
+    renderP3ActionZone('turn', word, team, false);
+    startP3Timer();
+  }
+});
+
+socket.on('phase3:yourTurn', ({ word, team, storyContext }) => {
+  renderP3ActionZone('turn', word, team, false, storyContext);
+  startP3Timer();
+  showNotif('¡Es tu turno! Escribe sobre "' + word + '"');
+});
+
+socket.on('phase3:crossTeamTurn', ({ word, fromTeam }) => {
+  renderP3ActionZone('cross', word, myTeam, true);
+  startP3Timer();
+  showNotif('¡La posta cruzó a tu equipo! Palabra: "' + word + '"');
+});
+
+function renderP3ActionZone(role, word, team, isCross, context) {
+  const zone = document.getElementById('p3-action-zone');
+  selectedNextPlayer = null;
+
+  if (role === 'turn' && !isCross) {
+    const myContext = context || (team === 'A'
+      ? (gameState.phase3?.storyA || []).map(s => s.text).join(' ')
+      : (gameState.phase3?.storyB || []).map(s => s.text).join(' '));
+
+    zone.innerHTML =
+      '<div class="pn-own">' +
+        '<div class="pn-own-top">' +
+          '<div><div class="pn-own-title">¡Es tu turno de escribir!</div>' +
+          '<div class="pn-own-sub">1 minuto · Equipo ' + team + '</div></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="word-prompt-row">' +
+        '<span class="wp-label">Tu palabra:</span>' +
+        '<span class="wp-word">' + word + '</span>' +
+      '</div>' +
+      (myContext ? '<div class="story-ctx"><div class="sct-label">Historia hasta ahora</div><div style="font-style:italic;font-size:12px;color:#555;">' + myContext + '</div></div>' : '') +
+      '<textarea class="write-input" id="p3-write-input" placeholder="Continúa la historia. Debes incluir \'' + word + '\'..." oninput="checkStoryWord(\'' + word + '\')" onkeydown="if(event.ctrlKey&&event.key===\'Enter\')sendStory()"></textarea>' +
+      '<div class="wchk wchk-mis" id="p3-wchk">⚠ Debes incluir "' + word + '" antes de enviar</div>' +
+      '<div class="row" style="margin-bottom:9px;">' +
+        '<button class="btn-send-story" id="p3-btn-send" onclick="sendStory()" disabled>Enviar →</button>' +
+        '<button class="btn-pass" onclick="passP3()">Pasar (−3 pts)</button>' +
+      '</div>' +
+      '<div class="avs">' +
+        '<div class="avsl">Elige a quién pasarle la posta (tu equipo):</div>' +
+        '<div class="avsg" id="p3-av-sel"></div>' +
+      '</div>';
+
+    renderAvatarSelector(team);
+
+  } else if (isCross) {
+    zone.innerHTML =
+      '<div class="pn-cross">' +
+        '<div style="font-size:24px;margin-bottom:6px;">🌉</div>' +
+        '<div class="pnc-title">¡La posta cruzó al otro equipo!</div>' +
+        '<div class="pnc-sub">El sistema te asignó esta palabra del otro equipo.<br>No ves su historia — solo tienes esta palabra:</div>' +
+        '<div style="margin-top:9px;"><span class="wp-word-cross">' + word + '</span></div>' +
+        '<div style="font-size:11px;color:#854F0B;margin-top:7px;font-style:italic;">Tu frase entrará en su historia, marcada como cruce.</div>' +
+      '</div>' +
+      '<div class="no-ctx">No ves la historia del otro equipo — escribe desde tu propia perspectiva</div>' +
+      '<textarea class="write-input write-input-cross" id="p3-write-input" placeholder="Escribe una frase con \'' + word + '\'..." oninput="checkStoryWord(\'' + word + '\')" ></textarea>' +
+      '<div class="wchk wchk-mis" id="p3-wchk">⚠ Debes incluir "' + word + '"</div>' +
+      '<div class="row">' +
+        '<button class="btn-send-story btn-send-cross" id="p3-btn-send" onclick="sendStory()" disabled>Enviar →</button>' +
+        '<button class="btn-pass" onclick="passP3()">Pasar (−3 pts)</button>' +
+      '</div>';
+  }
+}
+
+function renderAvatarSelector(team) {
+  const container = document.getElementById('p3-av-sel');
+  if (!container) return;
+  const teamIds = team === 'A' ? gameState.teamA : gameState.teamB;
+  if (!teamIds) return;
+  teamIds.forEach(id => {
+    if (id === myId) return;
+    const p = gameState.players?.[id];
+    if (!p) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'avsa';
+    const circle = document.createElement('div');
+    circle.className = 'avsc';
+    circle.style.background = p.color;
+    circle.style.color = p.textColor;
+    circle.textContent = p.initials;
+    circle.title = p.name + ' · ' + p.roleLabel;
+    circle.onclick = () => {
+      document.querySelectorAll('.avsc').forEach(c => c.classList.remove('sel'));
+      circle.classList.add('sel');
+      selectedNextPlayer = id;
+    };
+    const name = document.createElement('div');
+    name.className = 'avsn';
+    name.textContent = p.name.split(' ')[0];
+    wrap.appendChild(circle);
+    wrap.appendChild(name);
+    container.appendChild(wrap);
+  });
+}
+
+function checkStoryWord(word) {
+  const input = document.getElementById('p3-write-input');
+  const check = document.getElementById('p3-wchk');
+  const btn = document.getElementById('p3-btn-send');
+  if (!input || !check) return;
+  const has = input.value.toLowerCase().includes(word.toLowerCase());
+  check.textContent = has ? '✓ "' + word + '" incluida — puedes enviar' : '⚠ Debes incluir "' + word + '" antes de enviar';
+  check.className = 'wchk ' + (has ? 'wchk-ok' : 'wchk-mis');
+  if (btn) btn.disabled = !has;
+}
+
+function sendStory() {
+  const input = document.getElementById('p3-write-input');
+  if (!input || !input.value.trim()) return;
+  clearInterval(p3TimerInterval);
+  socket.emit('phase3:submitSentence', { text: input.value.trim(), nextPlayerId: selectedNextPlayer });
+
+  const zone = document.getElementById('p3-action-zone');
+  zone.innerHTML = '<div class="banner ban-obs">Frase enviada ✓ · Observando la historia...</div>';
+  document.getElementById('p3-timer').textContent = '—';
+  document.getElementById('p3-timer').className = 'timer-badge timer-wait';
+}
+
+function passP3() {
+  clearInterval(p3TimerInterval);
+  socket.emit('phase3:pass');
+  const zone = document.getElementById('p3-action-zone');
+  zone.innerHTML = '<div class="banner ban-obs">Pasaste · el sistema elige al siguiente jugador...</div>';
+}
+
+function startP3Timer() {
+  p3TimeLeft = 60;
+  if (p3TimerInterval) clearInterval(p3TimerInterval);
+  updateP3Timer();
+  p3TimerInterval = setInterval(() => {
+    p3TimeLeft--;
+    updateP3Timer();
+    if (p3TimeLeft <= 0) stopP3Timer();
+  }, 1000);
+}
+
+function stopP3Timer() { if (p3TimerInterval) { clearInterval(p3TimerInterval); p3TimerInterval = null; } }
+
+function updateP3Timer() {
+  const el = document.getElementById('p3-timer');
+  const bar = document.getElementById('p3-timer-bar');
+  el.textContent = fmtTime(p3TimeLeft);
+  el.className = 'timer-badge ' + (p3TimeLeft <= 15 ? 'timer-hot' : 'timer-ok');
+  if (bar) bar.style.width = (p3TimeLeft / 60 * 100) + '%';
+}
+
+function renderStory(team, story, usedWords) {
+  const stream = document.getElementById('p3-story-' + team.toLowerCase());
+  if (!stream) return;
+  stream.innerHTML = '';
+  story.forEach(entry => {
+    const line = document.createElement('div');
+    line.className = 'story-line';
+    const av = document.createElement('div');
+    av.className = 'slav';
+    av.style.background = entry.playerColor || '#ddd';
+    av.style.color = entry.playerTextColor || '#333';
+    av.textContent = entry.playerInitials || '?';
+    const txt = document.createElement('div');
+    txt.className = 'slt' + (entry.isCross ? '' : '');
+    const wordClass = team === 'A' ? 'sl-word-a' : 'sl-word-b';
+    txt.innerHTML = highlightWord(entry.text, entry.word, wordClass);
+    if (entry.isCross) {
+      line.style.opacity = '.9';
+      const crossBub = document.createElement('div');
+      crossBub.className = 'slt pl-cross-bub';
+      crossBub.innerHTML = '<div class="pl-ctag">cruce</div>' + txt.innerHTML;
+      line.appendChild(av);
+      line.appendChild(crossBub);
+    } else {
+      line.appendChild(av);
+      line.appendChild(txt);
+    }
+    stream.appendChild(line);
+  });
+  stream.scrollTop = stream.scrollHeight;
+
+  if (usedWords && usedWords.length > 0) {
+    renderP3Words(team, usedWords);
+    document.getElementById('p3-prog-' + team.toLowerCase()).textContent = team + ': ' + usedWords.length + '/6';
+  }
+}
+
+function renderGraph(graphData) {
+  const svg = document.getElementById('p3-graph');
+  if (!svg || !graphData) return;
+  svg.innerHTML = '';
+
+  const allPlayerIds = [...new Set(graphData.flatMap(e => [e.from, e.to]))];
+  const players = gameState.players || {};
+
+  if (allPlayerIds.length === 0) return;
+
+  // Position nodes in a simple layout
+  const positions = {};
+  const teamA = gameState.teamA || [];
+  const teamB = gameState.teamB || [];
+  const allIds = [...teamA, ...teamB];
+  const totalW = 600;
+  const totalH = 110;
+
+  teamA.forEach((id, i) => {
+    positions[id] = { x: 60 + (i * Math.floor(totalW / 2 / Math.max(teamA.length, 1))), y: 35 + (i % 2 === 0 ? 0 : 35) };
+  });
+  teamB.forEach((id, i) => {
+    positions[id] = { x: 330 + (i * Math.floor(totalW / 2 / Math.max(teamB.length, 1))), y: 35 + (i % 2 === 0 ? 0 : 35) };
+  });
+
+  // Draw edges
+  graphData.forEach(edge => {
+    const from = positions[edge.from];
+    const to = positions[edge.to];
+    if (!from || !to) return;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', from.x); line.setAttribute('y1', from.y);
+    line.setAttribute('x2', to.x); line.setAttribute('y2', to.y);
+    line.setAttribute('stroke', edge.isCross ? '#BA7517' : (edge.fromTeam === 'A' ? '#378ADD' : '#1D9E75'));
+    line.setAttribute('stroke-width', '2');
+    if (edge.isCross) line.setAttribute('stroke-dasharray', '5,3');
+    line.setAttribute('opacity', '0.7');
+    svg.appendChild(line);
+  });
+
+  // Draw nodes
+  allIds.forEach(id => {
+    const p = players[id];
+    const pos = positions[id];
+    if (!p || !pos) return;
+    const isActive = allPlayerIds.includes(id);
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', pos.x); circle.setAttribute('cy', pos.y);
+    circle.setAttribute('r', isActive ? '16' : '12');
+    circle.setAttribute('fill', isActive ? (p.color || '#ddd') : '#f5f3ef');
+    circle.setAttribute('stroke', isActive ? '#1a1a1a' : '#ddd');
+    circle.setAttribute('stroke-width', isActive ? '2' : '1.5');
+    if (!isActive) circle.setAttribute('stroke-dasharray', '3,2');
+    svg.appendChild(circle);
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', pos.x); text.setAttribute('y', pos.y + 4);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('font-size', '9');
+    text.setAttribute('font-weight', '700');
+    text.setAttribute('fill', isActive ? (p.textColor || '#333') : '#ccc');
+    text.textContent = p.initials;
+    svg.appendChild(text);
+  });
+}
+
+socket.on('phase3:teamFinished', ({ team, story, scores }) => {
+  gameState.scores = scores;
+  updateScoreDisplays(scores);
+  if (story) renderStory(team, story, gameState.phase3?.['words' + team] || []);
+  if (team === myTeam) showNotif('¡Tu equipo terminó la Fase 3!');
+});
+
+socket.on('game:dashboard', (data) => {
+  dashboardData = data;
+  showScreen('screen-phase3-fin');
+  const stats = document.getElementById('p3fin-stats');
+  const graphA = (data.graph || []).filter(e => !e.isCross).length;
+  stats.innerHTML =
+    '<div class="fst"><div class="fsv" style="color:#0C447C;">' + (data.storyA?.length || 0) + '</div><div class="fsl">frases Equipo A</div></div>' +
+    '<div class="fst"><div class="fsv" style="color:#085041;">' + (data.storyB?.length || 0) + '</div><div class="fsl">frases Equipo B</div></div>' +
+    '<div class="fst"><div class="fsv" style="color:#c0392b;">' + (data.ghostsA?.length + data.ghostsB?.length || 0) + '</div><div class="fsl">fantasmas</div></div>' +
+    '<div class="fst"><div class="fsv" style="color:#BA7517;">' + ((data.graph || []).filter(e => e.isCross).length) + '</div><div class="fsl">cruces</div></div>';
+
+  if (isModerator) {
+    document.getElementById('p3fin-btn').classList.remove('hidden');
+    document.getElementById('p3fin-modnote').classList.remove('hidden');
+    document.getElementById('p3fin-wait').classList.add('hidden');
+  }
+});
+
+function showDashboard() {
+  if (!dashboardData) return;
+  showScreen('screen-dashboard');
+  buildDashboard(dashboardData);
+}
+
+// ==================== DASHBOARD ====================
+function buildDashboard(data) {
+  buildScores(data);
+  buildDeclarada(data);
+  buildPracticada(data);
+  buildSubyacente(data);
+  buildGrafo(data);
+  buildVeredicto(data);
+}
+
+function buildScores(data) {
+  const container = document.getElementById('dash-scores');
+  const makeCard = (team, score, subScore, finalScore, labelName, labelColor, totalColor) => {
+    const d = document.createElement('div');
+    d.className = 'sc-card';
+    d.innerHTML =
+      '<div class="sc-hdr"><span style="font-size:12px;font-weight:700;color:' + labelColor + ';">' + labelName + '</span><span class="sc-total" style="color:' + totalColor + ';" id="sc-total-' + team + '">' + score + '</span></div>' +
+      '<div class="sbr">' +
+        '<div class="sbrow"><span class="sbl">Fase 1 + Fase 3</span><span class="sbv sbv-pos">+' + score + '</span></div>' +
+        '<div class="sbrow" id="sub-row-' + team + '"><span class="sbl" style="color:#534AB7;font-weight:600;">Puntaje subyacente</span><span class="sbv sbv-hid hs" id="sub-val-' + team + '">' + (subScore >= 0 ? '+' : '') + subScore + '</span></div>' +
+        '<div class="sbdiv"></div>' +
+        '<div class="sbtot hs" id="real-row-' + team + '"><span>Total real</span><span style="color:' + totalColor + ';">' + finalScore + '</span></div>' +
+      '</div>' +
+      '<span class="wb wb-dec" id="badge-' + team + '">Equipo ' + team + '</span>';
+    return d;
+  };
+  container.innerHTML = '';
+  container.appendChild(makeCard('A', data.scores.A, data.subyacenteA, data.finalA, 'Equipo A', '#0C447C', '#0C447C'));
+  container.appendChild(makeCard('B', data.scores.B, data.subyacenteB, data.finalB, 'Equipo B', '#085041', '#085041'));
+}
+
+function buildDeclarada(data) {
+  const sec = document.getElementById('dash-declarada');
+  const wrapWord = (text, words, cls) => {
+    let result = text;
+    (words || []).forEach(w => {
+      result = result.replace(new RegExp('(' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'), '<span class="' + cls + '">$1</span>');
+    });
+    return result;
+  };
+
+  sec.innerHTML =
+    '<div class="dim-hdr"><div class="dim-num" style="background:#EEEDFE;color:#3C3489;">1</div><div><div class="dim-ttl">Compromiso Declarado — lo que la Universidad dijo que haría</div><div class="dim-sttl">Escrita en solitario · control total · sin interferencia del territorio</div></div></div>' +
+    '<div class="dim-cols">' +
+      '<div class="dim-col"><div class="dct-a">Equipo A</div>' +
+        (data.isAutoA ? '<div class="auto-tag">⚡ Declaración automática</div>' : '') +
+        '<p class="decl-txt">"' + wrapWord(data.declarationA || '—', data.wordsA, 'dw-a') + '"</p>' +
+      '</div>' +
+      '<div class="dim-col"><div class="dct-b">Equipo B</div>' +
+        (data.isAutoB ? '<div class="auto-tag">⚡ Declaración automática</div>' : '') +
+        '<p class="decl-txt">"' + wrapWord(data.declarationB || '—', data.wordsB, 'dw-b') + '"</p>' +
+      '</div>' +
+    '</div>';
+}
+
+function buildPracticada(data) {
+  const sec = document.getElementById('dash-practicada');
+  const makeLines = (story, wordClass) => story.map(entry =>
+    '<div class="pl">' +
+      '<div class="plav" style="background:' + entry.playerColor + ';color:' + entry.playerTextColor + ';">' + entry.playerInitials + '</div>' +
+      '<div class="plt ' + (entry.isCross ? 'pl-cross-bub' : '') + '">' +
+        (entry.isCross ? '<div class="pl-ctag">cruce</div>' : '') +
+        highlightWord(entry.text, entry.word, wordClass) +
+      '</div>' +
+    '</div>'
+  ).join('');
+
+  sec.innerHTML =
+    '<div class="dim-hdr"><div class="dim-num" style="background:#E1F5EE;color:#085041;">2</div><div><div class="dim-ttl">Compromiso Practicado — lo que realmente construyeron en red</div><div class="dim-sttl">Historia colectiva · cada frase atribuida a su actor</div></div></div>' +
+    '<div class="dim-cols">' +
+      '<div class="dim-col"><div class="dct-a">Historia Equipo A</div>' + makeLines(data.storyA || [], 'pw-a') + '</div>' +
+      '<div class="dim-col"><div class="dct-b">Historia Equipo B</div>' + makeLines(data.storyB || [], 'pw-b') + '</div>' +
+    '</div>';
+}
+
+function buildSubyacente(data) {
+  const sec = document.getElementById('dash-subyacente');
+  const makeItems = (sub, ghosts, crosses) => {
+    const items = [];
+    if (sub.netType) items.push({ label: 'Tipo de red: ' + sub.netType, val: sub.netScore });
+    if (sub.hasComunidad) items.push({ label: 'Comunidad recibió la posta', val: +20 });
+    if (sub.hasOrgCivil) items.push({ label: 'Org. Civil recibió la posta', val: +20 });
+    if (ghosts.length > 0) items.push({ label: 'Nodos fantasma (' + ghosts.join(', ') + ')', val: -20 * ghosts.length });
+    if (crosses > 0) items.push({ label: 'Cruces entre equipos (×' + crosses + ')', val: -10 * crosses });
+    return items;
+  };
+  sec.innerHTML =
+    '<div class="dim-hdr"><div class="dim-num" style="background:#f0eeff;color:#534AB7;">3</div><div><div class="dim-ttl">Compromiso Subyacente — lo que la red revela sin que nadie lo planeara</div><div class="dim-sttl">Estructura de vínculos · actores ignorados · fricciones invisibles</div></div></div>' +
+    '<div class="sub-cols">' +
+      '<div class="sub-col">' +
+        '<div style="font-size:11px;font-weight:700;color:#0C447C;margin-bottom:9px;">Equipo A</div>' +
+        '<div class="si"><span class="sil">Total subyacente</span><span class="siv ' + (data.subyacenteA >= 0 ? 'siv-pos' : 'siv-neg') + '">' + (data.subyacenteA >= 0 ? '+' : '') + data.subyacenteA + '</span></div>' +
+        '<div style="font-size:11px;color:#888;">Fantasmas: ' + (data.ghostsA?.join(', ') || 'ninguno') + '</div>' +
+      '</div>' +
+      '<div class="sub-col">' +
+        '<div style="font-size:11px;font-weight:700;color:#085041;margin-bottom:9px;">Equipo B</div>' +
+        '<div class="si"><span class="sil">Total subyacente</span><span class="siv ' + (data.subyacenteB >= 0 ? 'siv-pos' : 'siv-neg') + '">' + (data.subyacenteB >= 0 ? '+' : '') + data.subyacenteB + '</span></div>' +
+        '<div style="font-size:11px;color:#888;">Fantasmas: ' + (data.ghostsB?.join(', ') || 'ninguno') + '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function buildGrafo(data) {
+  const sec = document.getElementById('dash-grafo');
+  sec.innerHTML =
+    '<div class="dim-hdr"><div class="dim-num" style="background:#f5f3ef;color:#555;">↗</div><div><div class="dim-ttl">Grafo de red final — lo subyacente hecho visible</div></div></div>' +
+    '<div class="graph-chips" id="graph-chips-final"></div>' +
+    '<div style="padding:10px;"><svg id="dash-graph-svg" viewBox="0 0 620 140" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:140px;"></svg></div>';
+
+  const chips = document.getElementById('graph-chips-final');
+  const crosses = (data.graph || []).filter(e => e.isCross).length;
+  const ghostsTotal = (data.ghostsA?.length || 0) + (data.ghostsB?.length || 0);
+  if (crosses > 0) chips.innerHTML += '<span class="gchip gc-neu">' + crosses + ' cruce(s) entre equipos</span>';
+  if (ghostsTotal > 0) chips.innerHTML += '<span class="gchip gc-neg">' + ghostsTotal + ' nodo(s) fantasma</span>';
+  if (data.isAutoA || data.isAutoB) chips.innerHTML += '<span class="gchip gc-neg">Declaración automática usada</span>';
+
+  // Render graph in SVG
+  setTimeout(() => {
+    const svg = document.getElementById('dash-graph-svg');
+    if (!svg) return;
+    const players = data.players || {};
+    const teamA = gameState.teamA || [];
+    const teamB = gameState.teamB || [];
+    const positions = {};
+    teamA.forEach((id, i) => { positions[id] = { x: 50 + i * 90, y: 50 }; });
+    teamB.forEach((id, i) => { positions[id] = { x: 350 + i * 80, y: 50 }; });
+
+    (data.graph || []).forEach(edge => {
+      const f = positions[edge.from]; const t = positions[edge.to];
+      if (!f || !t) return;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', f.x); line.setAttribute('y1', f.y);
+      line.setAttribute('x2', t.x); line.setAttribute('y2', t.y);
+      line.setAttribute('stroke', edge.isCross ? '#BA7517' : (edge.fromTeam === 'A' ? '#378ADD' : '#1D9E75'));
+      line.setAttribute('stroke-width', '2');
+      if (edge.isCross) line.setAttribute('stroke-dasharray', '5,3');
+      line.setAttribute('opacity', '0.7');
+      svg.appendChild(line);
+    });
+
+    const allActive = new Set((data.graph || []).flatMap(e => [e.from, e.to]));
+    [...teamA, ...teamB].forEach(id => {
+      const p = players[id]; const pos = positions[id];
+      if (!p || !pos) return;
+      const isActive = allActive.has(id);
+      const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      c.setAttribute('cx', pos.x); c.setAttribute('cy', pos.y);
+      c.setAttribute('r', isActive ? '18' : '12');
+      c.setAttribute('fill', isActive ? (p.color || '#ddd') : '#f5f3ef');
+      c.setAttribute('stroke', isActive ? '#1a1a1a' : '#ddd');
+      c.setAttribute('stroke-width', '2');
+      if (!isActive) c.setAttribute('stroke-dasharray', '3,2');
+      svg.appendChild(c);
+      const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      txt.setAttribute('x', pos.x); txt.setAttribute('y', pos.y + 4);
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('font-size', '9'); txt.setAttribute('font-weight', '700');
+      txt.setAttribute('fill', isActive ? (p.textColor || '#333') : '#ccc');
+      txt.textContent = p.initials;
+      svg.appendChild(txt);
+      const role = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      role.setAttribute('x', pos.x); role.setAttribute('y', pos.y + (isActive ? 36 : 28));
+      role.setAttribute('text-anchor', 'middle'); role.setAttribute('font-size', '8');
+      role.setAttribute('fill', isActive ? '#888' : '#ccc');
+      role.textContent = (p.roleLabel || '').split(' ')[0];
+      svg.appendChild(role);
+    });
+  }, 100);
+}
+
+function buildVeredicto(data) {
+  const cols = document.getElementById('dash-verd-cols');
+  cols.innerHTML =
+    '<div class="vd-team"><div class="vd-tn" style="color:#378ADD;">Equipo A</div><div class="vd-dec">Declarado: <span>' + data.scores.A + ' pts</span></div><div class="vd-real hs" id="vr-a" style="color:' + (data.finalA >= data.finalB ? '#0F6E56' : '#c0392b') + ';">Real: ' + data.finalA + ' pts</div></div>' +
+    '<div class="vd-vs">vs</div>' +
+    '<div class="vd-team"><div class="vd-tn" style="color:#1D9E75;">Equipo B</div><div class="vd-dec">Declarado: <span>' + data.scores.B + ' pts</span></div><div class="vd-real hs" id="vr-b" style="color:' + (data.finalB >= data.finalA ? '#0F6E56' : '#c0392b') + ';">Real: ' + data.finalB + ' pts</div></div>';
+
+  const winner = document.getElementById('dash-winner');
+  const winTeam = data.winner;
+  const winName = winTeam === 'A' ? 'Equipo A' : winTeam === 'B' ? 'Equipo B' : '¡Empate!';
+  const winColor = winTeam === 'A' ? '#9FE1CB' : '#B5D4F4';
+  winner.innerHTML =
+    '<div class="vdw-lbl">Ganador real del juego</div>' +
+    '<div class="vdw-name" style="color:' + winColor + ';">' + winName + ' 🏆</div>' +
+    '<div class="vdw-why">El puntaje subyacente refleja la calidad de la red construida, no solo la velocidad. El equipo con mayor diversidad de actores y menor endogamia ganó el verdadero indicador de impacto.</div>';
+}
+
+function revealSubyacente() {
+  if (subyacenteRevealed) return;
+  subyacenteRevealed = true;
+  document.querySelectorAll('.hs').forEach(el => el.classList.add('rev'));
+  const w = dashboardData?.winner;
+  if (w) {
+    const badgeA = document.getElementById('badge-A');
+    const badgeB = document.getElementById('badge-B');
+    if (badgeA) { badgeA.textContent = w === 'A' ? 'Ganador real 🏆' : 'Ganador por velocidad'; badgeA.className = 'wb ' + (w === 'A' ? 'wb-real' : 'wb-los'); }
+    if (badgeB) { badgeB.textContent = w === 'B' ? 'Ganador real 🏆' : 'Ganador por velocidad'; badgeB.className = 'wb ' + (w === 'B' ? 'wb-real' : 'wb-los'); }
+  }
+  document.getElementById('btn-reveal-sub').textContent = 'Puntaje subyacente revelado ✓';
+  document.getElementById('btn-reveal-sub').className = 'btn-reveal br-sho';
+}
+
+// ==================== SHARED UTILS ====================
+function updateScoreDisplays(scores) {
+  const displays = ['p1-score', 'p2-score', 'p3-score'];
+  displays.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      const myScore = myTeam === 'A' ? scores.A : scores.B;
+      el.textContent = myScore + ' pts';
+    }
+  });
+}
+
+socket.on('game:reset', () => { location.reload(); });
+
+// Start
+showScreen('screen-landing');
+</script>
+</body>
+</html>
