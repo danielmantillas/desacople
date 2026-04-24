@@ -289,6 +289,23 @@ textarea{resize:none;line-height:1.5;}
   </div>
 </div>
 
+<div id="s-role" class="screen">
+  <div class="center-wrap">
+    <div class="card" style="text-align:center;">
+      <p style="font-size:15px;color:#555;margin-bottom:4px;">Hola, <strong id="role-player-name"></strong>.</p>
+      <p style="font-size:13px;color:#aaa;margin-bottom:24px;">El sistema te ha asignado un rol en la red:</p>
+      <div id="role-card" style="border-radius:14px;padding:28px 20px;margin-bottom:20px;">
+        <div id="role-type-tag" style="display:inline-block;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;margin-bottom:14px;"></div>
+        <div id="role-title" style="font-size:34px;font-weight:800;margin-bottom:12px;"></div>
+        <div id="role-desc" style="font-size:13px;line-height:1.7;color:#555;"></div>
+      </div>
+      <div id="role-team-badge" style="display:inline-block;font-size:12px;font-weight:700;padding:5px 18px;border-radius:20px;margin-bottom:20px;"></div>
+      <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-bottom:20px;color:#aaa;font-size:12px;"><div style="width:7px;height:7px;border-radius:50%;background:#4CAF50;animation:pulse 1.5s infinite;"></div>Esperando que los demas ingresen...</div>
+      <button class="btn btn-dark" onclick="goToLobby()">Ver sala de espera &rarr;</button>
+    </div>
+  </div>
+</div>
+
 <div id="s-lobby" class="screen">
   <div class="lobby-wrap">
     <div class="lobby-header">
@@ -463,18 +480,47 @@ function joinGame(asMod){
 }
 socket.on('joinError',({msg})=>notif(msg,5000));
 
-socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor})=>{
+
+const ROLE_DESCS={universidad:'Representas la institucion academica. Tienes el compromiso formal, pero tambien la distancia del territorio.',gobierno:'Representas la institucionalidad publica. Tienes poder de decision, pero tambien de omision.',empresa:'Tu logica es la eficiencia, tu riesgo es el greenwashing.',org_civil:'Representas la sociedad organizada. Eres el puente entre la norma y la comunidad.',comunidad:'Tu voz es la mas legitima y la menos escuchada.'};
+const ROLE_TYPE={universidad:'Actor Institucional',gobierno:'Actor Territorial',empresa:'Actor Economico',org_civil:'Actor Social',comunidad:'Actor Comunitario'};
+
+function showRoleScreen(role,roleLabel,team,color,textColor){
+  document.getElementById('role-player-name').textContent=myName;
+  const card=document.getElementById('role-card');
+  card.style.background=color+'22';card.style.border='1.5px solid '+color+'88';
+  const tag=document.getElementById('role-type-tag');
+  tag.textContent=ROLE_TYPE[role]||'';tag.style.background='#f5ede0';tag.style.color='#7a4a1a';
+  const title=document.getElementById('role-title');
+  title.textContent=roleLabel;title.style.color=textColor;
+  document.getElementById('role-desc').textContent=ROLE_DESCS[role]||'';
+  const badge=document.getElementById('role-team-badge');
+  badge.textContent='Equipo '+team;badge.style.background=color+'33';badge.style.color=textColor;
+  showScreen('s-role');
+}
+function goToLobby(){showScreen('s-lobby');renderMyRoleBanner();}
+
+socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor,isNew})=>{
   myId=id;
-  if(isModerator){
-    showScreen('s-lobby');
-    document.getElementById('mod-bar').classList.remove('hidden');
-    document.getElementById('wait-bar').classList.add('hidden');
-  } else {
-    myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;
-    showScreen('s-lobby');
-    renderMyRoleBanner();
-  }
+  if(!isModerator){myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;}
   document.getElementById('lobby-url').textContent=window.location.host;
+  if(isModerator){document.getElementById('mod-bar').classList.remove('hidden');document.getElementById('wait-bar').classList.add('hidden');}
+  window._joinedIsNew=isNew;
+});
+
+socket.on('restoreState',(data)=>{
+  if(data.state)gs=data.state;
+  if(data.phase==='lobby'){
+    if(isMod){showScreen('s-lobby');}
+    else if(window._joinedIsNew){showRoleScreen(myRole,myRoleLabel,myTeam,myColor,myTextColor);}
+    else{showScreen('s-lobby');renderMyRoleBanner();}
+  } else if(data.phase==='phase1'){
+    showScreen('s-lobby');renderMyRoleBanner();initP1();
+  } else if(data.phase==='phase2'){
+    showScreen('s-lobby');renderMyRoleBanner();
+    initP2(data.timeA,data.timeB,data.wordsA,data.wordsB);
+  } else if(data.phase==='phase3'){
+    showScreen('s-lobby');renderMyRoleBanner();initP3();
+  }
 });
 
 socket.on('lobbyUpdate',state=>{gs=state;updateLobby(state);});
