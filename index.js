@@ -93,17 +93,12 @@ const ROLE_COLORS = {
   comunidad:  { bg:'#D3D1C7', text:'#444441' }
 };
 
-let gs = (()=>{
-  const saved = loadGs();
-  if (!saved) return makeState();
-  // Si no hay moderador activo o la fase no es lobby y no hay juego en progreso real, resetear
-  if (!saved.moderatorId || !saved.players || !saved.players[saved.moderatorId]) {
-    console.log('[START] No hay moderador activo en estado guardado, reseteando a lobby');
-    return makeState();
-  }
-  return saved;
-})();
-console.log("[START] PID:", process.pid, "fase:", gs.phase, "jugadores:", Object.keys(gs.players||{}).length);
+// Borrar estado al arrancar - cada despliegue empieza fresco
+try { if (fs.existsSync(STATE_FILE)) { fs.unlinkSync(STATE_FILE); console.log('[START] Estado anterior borrado'); } } catch(e) {}
+let gs = makeState();
+// Crear archivo inicial
+saveGs();
+console.log("[START] PID:", process.pid, "inicio fresco");
 
 function makeState() {
   return {
