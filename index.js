@@ -93,12 +93,20 @@ const ROLE_COLORS = {
   comunidad:  { bg:'#D3D1C7', text:'#444441' }
 };
 
-// Borrar estado al arrancar - cada despliegue empieza fresco
-try { if (fs.existsSync(STATE_FILE)) { fs.unlinkSync(STATE_FILE); console.log('[START] Estado anterior borrado'); } } catch(e) {}
-let gs = makeState();
-// Crear archivo inicial
-saveGs();
-console.log("[START] PID:", process.pid, "inicio fresco");
+// Cargar estado compartido del disco (si existe y es reciente)
+let gs = (()=>{
+  try {
+    if (!fs.existsSync(STATE_FILE)) return makeState();
+    const stat = fs.statSync(STATE_FILE);
+    const ageMinutes = (Date.now() - stat.mtimeMs) / 60000;
+    if (ageMinutes > 120) { console.log('[START] Estado muy antiguo, reseteando'); return makeState(); }
+    const saved = JSON.parse(fs.readFileSync(STATE_FILE,'utf8'));
+    if (!saved || !saved.phase) return makeState();
+    console.log('[START] PID:', process.pid, '| fase:', saved.phase, '| jugadores:', Object.keys(saved.players||{}).length);
+    return saved;
+  } catch(e) { return makeState(); }
+})();
+if (!fs.existsSync(STATE_FILE)) saveGs();
 
 function makeState() {
   return {
