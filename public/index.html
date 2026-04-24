@@ -262,6 +262,8 @@ textarea{resize:none;line-height:1.5;}
 </head>
 <body>
 
+<div id="mod-float" class="hidden" style="position:fixed;bottom:20px;right:20px;z-index:9999;"><button onclick="if(confirm('Terminar y reiniciar?'))socket.emit('reset')" style="background:#c0392b;color:white;border:none;border-radius:12px;padding:12px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 15px rgba(0,0,0,0.3);">Terminar juego</button></div>
+
 <div id="s-land" class="screen active">
   <div class="center-wrap">
     <div class="card" style="text-align:center;">
@@ -278,9 +280,9 @@ textarea{resize:none;line-height:1.5;}
 
       <div id="view-mod" style="display:none;">
         <label for="pname-mod">Tu nombre</label>
-        <input type="text" id="pname-mod" placeholder="Nombre del moderador" style="margin-bottom:10px;">
+        <input type="text" id="pname-mod" placeholder="Nombre del moderador" style="margin-bottom:10px;width:100%;box-sizing:border-box;padding:12px 14px;font-size:15px;border:1.5px solid #ddd;border-radius:10px;font-family:inherit;outline:none;">
         <label for="mod-pass">Contraseña</label>
-        <input type="password" id="mod-pass" placeholder="Contraseña de moderador" style="margin-bottom:14px;">
+        <input type="password" id="mod-pass" placeholder="Contraseña de moderador" style="margin-bottom:14px;width:100%;box-sizing:border-box;padding:12px 14px;font-size:15px;border:1.5px solid #ddd;border-radius:10px;font-family:inherit;outline:none;">
         <button class="btn btn-dark" onclick="joinGame(true)">Entrar como moderador →</button>
         <div class="divider"><div class="div-line"></div><div class="div-line"></div></div>
         <a class="link" onclick="switchView('player')">← Volver</a>
@@ -321,6 +323,7 @@ textarea{resize:none;line-height:1.5;}
       <div class="mb-info"><div class="mb-title">Panel del moderador</div><div class="mb-sub">Tú controlas cuándo empieza el juego</div></div>
       <div class="mb-stats"><div class="mbs"><div class="mbsv" id="mod-total">0</div><div class="mbsl">conectados</div></div><div class="mbs"><div class="mbsv" style="color:#4CAF50;" id="mod-unis">0</div><div class="mbsl">universidades</div></div></div>
       <button class="btn-start" onclick="startGame()">Iniciar juego ▶</button>
+      <button onclick="if(confirm('Reiniciar y cerrar juego?'))socket.emit('reset')" style="background:#c0392b;color:white;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-left:8px;">Reiniciar</button>
     </div>
     <div class="wait-bar" id="wait-bar"><div class="pulse-dot"></div><span>Esperando que el moderador inicie el juego...</span></div>
   </div>
@@ -456,7 +459,7 @@ let myId=null,myName='',myRole=null,myRoleLabel='',myTeam=null,myColor='#ddd',my
 let gs={},p1Timer=null,p1Time=30,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
 let emojiStr='',selNext=null,dashData=null,subRevealed=false;
 
-function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);const mf=document.getElementById('mod-float');if(mf){const gscr=['s-p1','s-p2','s-p3','s-p1fin','s-p2fin','s-p3fin','s-dash'];if(isMod&&gscr.includes(id))mf.classList.remove('hidden');else mf.classList.add('hidden');}}
 function notif(msg,d=3000){const n=document.createElement('div');n.className='notif';n.textContent=msg;document.body.appendChild(n);setTimeout(()=>n.remove(),d);}
 function fmt(s){return Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60;}
 function mkAv(ini,bg,tc,sz=24){const d=document.createElement('div');d.style.cssText='background:'+bg+';color:'+tc+';width:'+sz+'px;height:'+sz+'px;font-size:'+Math.floor(sz*.38)+'px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;';d.textContent=ini;return d;}
