@@ -267,11 +267,21 @@ textarea{resize:none;line-height:1.5;}
     <div class="card" style="text-align:center;">
       <div class="game-logo">des<span>a</span>cople</div>
       <p style="font-size:13px;color:#888;margin-bottom:24px;line-height:1.5;">Un juego sobre el compromiso ambiental universitario y lo que realmente ocurre en red.</p>
-      <label for="pname">Tu nombre</label>
-      <input type="text" id="pname" placeholder="¿Cómo te llamamos?" style="margin-bottom:14px;">
-      <button class="btn btn-dark" onclick="joinGame(false)">Entrar al juego →</button>
+      <div id="player-section">
+        <label for="pname">Tu nombre</label>
+        <input type="text" id="pname" placeholder="¿Cómo te llamamos?" style="margin-bottom:14px;">
+        <button class="btn btn-dark" onclick="joinGame(false)">Entrar al juego →</button>
+        <p id="no-mod-msg" class="hidden" style="font-size:12px;color:#e67e22;margin-top:10px;text-align:center;">⏳ Esperando a que el moderador abra la sala...</p>
+      </div>
       <div class="divider"><div class="div-line"></div><span class="div-text">¿eres el moderador?</span><div class="div-line"></div></div>
-      <a class="link" onclick="joinGame(true)">Acceder como moderador →</a>
+      <div id="mod-section" class="hidden">
+        <label for="pname-mod">Nombre del moderador</label>
+        <input type="text" id="pname-mod" placeholder="Tu nombre" style="margin-bottom:10px;">
+        <label for="mod-pass">Contraseña</label>
+        <input type="password" id="mod-pass" placeholder="Contraseña de moderador" style="margin-bottom:14px;">
+        <button class="btn btn-dark" onclick="joinAsMod()">Acceder como moderador →</button>
+      </div>
+      <a class="link" id="mod-toggle" onclick="toggleModSection()">Acceder como moderador →</a>
     </div>
   </div>
 </div>
