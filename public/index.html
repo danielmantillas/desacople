@@ -421,7 +421,7 @@ textarea{resize:none;line-height:1.5;}
 </div>
 
 <script>
-const socket=io({transports:['polling']});
+const socket=io({transports:['polling'],reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:1000});
 let myId=null,myName='',myRole=null,myRoleLabel='',myTeam=null,myColor='#ddd',myTextColor='#333',myInitials='',isMod=false;
 let gs={},p1Timer=null,p1Time=30,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
 let emojiStr='',selNext=null,dashData=null,subRevealed=false;
@@ -450,10 +450,15 @@ socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor})=>{
   } else {
     myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;
     showScreen('s-lobby');
-    renderMyRoleBanner();
+    setTimeout(()=>renderMyRoleBanner(),100);
   }
   document.getElementById('lobby-url').textContent=window.location.host;
 });
+
+socket.on('connect',()=>{
+  if(myName){socket.emit('join',{name:myName,isModerator:isMod});}
+});
+
 
 socket.on('lobbyUpdate',state=>{gs=state;updateLobby(state);});
 
