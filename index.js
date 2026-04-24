@@ -93,7 +93,16 @@ const ROLE_COLORS = {
   comunidad:  { bg:'#D3D1C7', text:'#444441' }
 };
 
-let gs = loadGs() || makeState();
+let gs = (()=>{
+  const saved = loadGs();
+  if (!saved) return makeState();
+  // Si no hay moderador activo o la fase no es lobby y no hay juego en progreso real, resetear
+  if (!saved.moderatorId || !saved.players || !saved.players[saved.moderatorId]) {
+    console.log('[START] No hay moderador activo en estado guardado, reseteando a lobby');
+    return makeState();
+  }
+  return saved;
+})();
 console.log("[START] PID:", process.pid, "fase:", gs.phase, "jugadores:", Object.keys(gs.players||{}).length);
 
 function makeState() {
@@ -483,15 +492,20 @@ io.on('connection', socket => {
   });
 
   socket.on('disconnect', () => {
-    // Leer estado fresco del disco para no borrar un jugador que ya reconecto en otro proceso
-    const fresh = loadGs() || gs;
-    if (!fresh.players[socket.id]) return; // Socket ya fue reasignado, no borrar
-    gs = fresh;
-    delete gs.players[socket.id];
-    gs.teamA = gs.teamA.filter(id=>id!==socket.id);
-    gs.teamB = gs.teamB.filter(id=>id!==socket.id);
-    saveGs();
-    io.emit('lobbyUpdate', publicState());
+    const sid = socket.id;
+    // Esperar 4 segundos antes de borrar — da tiempo a reconexiones
+    setTimeout(() => {
+      const fresh = loadGs() || gs;
+      // Solo borrar si el socket ID sigue siendo el mismo (no fue reasignado)
+      if (!fresh.players[sid]) return;
+      gs = fresh;
+      delete gs.players[sid];
+      gs.teamA = gs.teamA.filter(id=>id!==sid);
+      gs.teamB = gs.teamB.filter(id=>id!==sid);
+      saveGs();
+      io.emit('lobbyUpdate', publicState());
+      console.log('[DISC]', sid, 'eliminado tras timeout');
+    }, 4000);
   });
 });
 
