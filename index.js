@@ -9,6 +9,7 @@ const MOD_PASSWORD = 'desacople2025';
 // ── ESTADO COMPARTIDO EN DISCO ────────────────────────────────────────────────
 const STATE_FILE = '/tmp/desacople_gs.json';
 const EVENTS_FILE = '/tmp/desacople_events.json';
+const MOD_ACTIVE_FILE = '/tmp/desacople_mod_active';
 
 function saveGs() {
   try {
@@ -334,6 +335,7 @@ io.on('connection', socket => {
       const p = gs.players[socket.id];
       if (isModerator) {
         socket.join('moderator');
+        try { fs.writeFileSync(MOD_ACTIVE_FILE, String(Date.now())); } catch(e) {}
         socket.emit('joined',{id:socket.id,isModerator:true,isNew:false});
       } else {
         socket.join('team'+p.team);
@@ -356,11 +358,13 @@ io.on('connection', socket => {
       // Nueva sesión: limpiar estado
       gs = makeState();
       saveGs();
+      try { fs.writeFileSync(MOD_ACTIVE_FILE, String(Date.now())); } catch(e) {}
       console.log('[RESET] Nueva sesión por moderador:', trimName);
     } else {
       // Jugadores necesitan moderador activo
-      const hasMod = gs.moderatorId && gs.players[gs.moderatorId]?.isModerator;
-      if (!hasMod) { socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que el moderador abra la sala.'}); return; }
+      // Verificar que hay moderador activo via archivo (no confiar en estado en disco)
+      const modActive = (() => { try { if(!fs.existsSync(MOD_ACTIVE_FILE)) return false; const age=(Date.now()-parseInt(fs.readFileSync(MOD_ACTIVE_FILE,'utf8')))/1000; return age<7200; } catch(e){return false;} })();
+      if (!modActive) { socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que el moderador abra la sala.'}); return; }
       if (gs.phase !== 'lobby') { socket.emit('joinError',{msg:'El juego ya inició. No puedes unirte ahora.'}); return; }
     }
 
@@ -538,6 +542,8 @@ io.on('connection', socket => {
 
   socket.on('disconnect', () => {
     const sid = socket.id;
+    // Si era el moderador, borrar archivo de sesión activa
+    if (sid === gs.moderatorId) { try { fs.unlinkSync(MOD_ACTIVE_FILE); } catch(e){} console.log('[MOD] Moderador desconectado'); }
     setTimeout(() => {
       const fresh = loadGs() || gs;
       if (!fresh.players[sid]) return; // Ya fue reasignado
