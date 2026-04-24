@@ -2,13 +2,13 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-
-const MOD_PASSWORD = 'desacople2025'; // Cambiar esta clave
 const fs = require('fs');
 
-// ── ESTADO COMPARTIDO EN DISCO ───────────────────────────────────────────────
-// Multiples procesos PM2 comparten el mismo estado via archivo en /tmp
+const MOD_PASSWORD = 'desacople2025';
+
+// ── ESTADO COMPARTIDO EN DISCO ────────────────────────────────────────────────
 const STATE_FILE = '/tmp/desacople_gs.json';
+const EVENTS_FILE = '/tmp/desacople_events.json';
 
 function saveGs() {
   try {
@@ -16,88 +16,31 @@ function saveGs() {
       (k==='timerA'||k==='timerB') ? null : v
     ));
     fs.writeFileSync(STATE_FILE, JSON.stringify(copy), 'utf8');
-  } catch(e) { console.error('[SAVE_ERR]', e.message); }
+  } catch(e) { console.error('[SAVE]', e.message); }
 }
 
 function loadGs() {
   try {
-    if (fs.existsSync(STATE_FILE)) {
-      const raw = fs.readFileSync(STATE_FILE, 'utf8');
-      const data = JSON.parse(raw);
-      if (data && typeof data.phase === 'string') return data;
-    }
-  } catch(e) { console.error('[LOAD_ERR]', e.message); }
+    if (!fs.existsSync(STATE_FILE)) return null;
+    const stat = fs.statSync(STATE_FILE);
+    if ((Date.now() - stat.mtimeMs) > 7200000) return null; // >2h → stale
+    const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    if (data && data.phase) return data;
+  } catch(e) {}
   return null;
+}
+
+function broadcastEvent(eventData) {
+  try {
+    let events = [];
+    try { const e = JSON.parse(fs.readFileSync(EVENTS_FILE,'utf8')); if(Array.isArray(e)) events = e; } catch(e2){}
+    events.push({ ...eventData, ts: Date.now() });
+    fs.writeFileSync(EVENTS_FILE, JSON.stringify(events.filter(e => Date.now()-e.ts < 5000)));
+  } catch(e) {}
 }
 
 process.on('uncaughtException', err => console.error('[CRASH]', err.message));
 process.on('unhandledRejection', r => console.error('[REJECT]', String(r)));
-
-// Polling del archivo de estado cada 600ms para sincronizar entre procesos
-const EVENTS_FILE = '/tmp/desacople_events.json';
-let lastStateStr = '';
-let lastEventsStr = '';
-
-function broadcastEvent(eventData) {
-  // Guardar evento en archivo para que otros procesos lo reenvien a sus clientes
-  try {
-    const events = [];
-    try { const e = JSON.parse(fs.readFileSync(EVENTS_FILE,'utf8')); if(Array.isArray(e)) events.push(...e); } catch(e2){}
-    events.push({ ...eventData, ts: Date.now() });
-    // Solo guardar eventos de los ultimos 5 segundos
-    const fresh = events.filter(e => Date.now() - e.ts < 5000);
-    fs.writeFileSync(EVENTS_FILE, JSON.stringify(fresh));
-  } catch(e) {}
-}
-
-function startFileWatcher() {
-  setInterval(() => {
-    try {
-      // 1. Sincronizar estado (jugadores, fase)
-      if (fs.existsSync(STATE_FILE)) {
-        const raw = fs.readFileSync(STATE_FILE, 'utf8');
-        if (raw !== lastStateStr) {
-          lastStateStr = raw;
-          const fresh = JSON.parse(raw);
-          if (fresh && fresh.phase) {
-            const oldPhase = gs.phase;
-            const oldCount = JSON.stringify(Object.keys(gs.players||{}).sort());
-            const newCount = JSON.stringify(Object.keys(fresh.players||{}).sort());
-            gs = fresh;
-            if (oldCount !== newCount) io.emit('lobbyUpdate', publicState());
-          }
-        }
-      }
-      // 2. Reenviar eventos de otros procesos
-      if (fs.existsSync(EVENTS_FILE)) {
-        const raw = fs.readFileSync(EVENTS_FILE, 'utf8');
-        if (raw !== lastEventsStr) {
-          lastEventsStr = raw;
-          const events = JSON.parse(raw);
-          if (Array.isArray(events)) {
-            events.filter(e => Date.now() - e.ts < 3000).forEach(e => {
-              const { _pid, ts, event, ...data } = e;
-              if (_pid === process.pid) return; // No re-emitir propios
-              if (!io) return;
-              if (event === 'p1:mimeHint') {
-                // Enviar yourTurn solo a mime y guesser correctos
-                if (data.mimeId) io.to(data.mimeId).emit('p1:yourTurn', { role:'mime', word:data.word, hints:data.hints });
-                if (data.guesserId) io.to(data.guesserId).emit('p1:yourTurn', { role:'guesser' });
-                io.to('team'+data.team).emit('p1:turnUpdate', { team:data.team, turn:{mime:data.mimeId,guesser:data.guesserId}, wordIndex:data.wordIndex||0, scores:data.scores||{A:0,B:0}, passes:data.passes||0 });
-              } else {
-                io.emit(event, data);
-              }
-              console.log('[RELAY]', event, 'desde PID', _pid);
-            });
-          }
-        }
-      }
-    } catch(e) {}
-  }, 600);
-  // Limpiar archivo de eventos al arrancar
-  try { fs.writeFileSync(EVENTS_FILE, '[]'); } catch(e) {}
-  console.log('[WATCH] Polling activo 600ms');
-}
 
 const app = express();
 const server = http.createServer(app);
@@ -135,58 +78,82 @@ const ROLE_COLORS = {
   comunidad:  { bg:'#D3D1C7', text:'#444441' }
 };
 
-// Cargar estado compartido del disco (si existe y es reciente)
-let gs = (()=>{
-  try {
-    if (!fs.existsSync(STATE_FILE)) return makeState();
-    const stat = fs.statSync(STATE_FILE);
-    const ageMinutes = (Date.now() - stat.mtimeMs) / 60000;
-    if (ageMinutes > 120) { console.log('[START] Estado muy antiguo, reseteando'); return makeState(); }
-    const saved = JSON.parse(fs.readFileSync(STATE_FILE,'utf8'));
-    if (!saved || !saved.phase) return makeState();
-    console.log('[START] PID:', process.pid, '| fase:', saved.phase, '| jugadores:', Object.keys(saved.players||{}).length);
-    return saved;
-  } catch(e) { return makeState(); }
-})();
-if (!fs.existsSync(STATE_FILE)) saveGs();
-
 function makeState() {
   return {
-    phase: 'lobby',
-    players: {},
-    teamA: [], teamB: [],
-    scores: { A:0, B:0 },
-    moderatorId: null,
+    phase: 'lobby', players: {}, teamA: [], teamB: [],
+    scores: { A:0, B:0 }, moderatorId: null,
     phase1: {
-      wordsA:[], wordsB:[],
-      idxA:0, idxB:0,
-      guessedA:[], guessedB:[],
-      queueA:[], queueB:[],
-      turnA:{ mime:null, guesser:null },
-      turnB:{ mime:null, guesser:null },
-      timerA:null, timerB:null,
-      passesA:0, passesB:0,
-      finA:false, finB:false
+      wordsA:[], wordsB:[], idxA:0, idxB:0,
+      guessedA:[], guessedB:[], queueA:[], queueB:[],
+      turnA:{ mime:null, guesser:null }, turnB:{ mime:null, guesser:null },
+      timerA:null, timerB:null, passesA:0, passesB:0, finA:false, finB:false
     },
-    phase2: {
-      declA:null, declB:null,
-      autoA:false, autoB:false,
-      timeA:180, timeB:180,
-      finA:false, finB:false
-    },
+    phase2: { declA:null, declB:null, autoA:false, autoB:false, timeA:180, timeB:180, finA:false, finB:false },
     phase3: {
-      storyA:[], storyB:[],
-      wordsA:[], wordsB:[],
-      usedA:[], usedB:[],
-      turnA:null, turnB:null,
-      wordA:null, wordB:null,
-      graph:[],
-      passesA:0, passesB:0,
-      timerA:null, timerB:null,
-      finA:false, finB:false
+      storyA:[], storyB:[], wordsA:[], wordsB:[], usedA:[], usedB:[],
+      turnA:null, turnB:null, wordA:null, wordB:null,
+      graph:[], passesA:0, passesB:0, timerA:null, timerB:null, finA:false, finB:false
     }
   };
 }
+
+// Cargar estado desde disco al arrancar
+let gs = (()=>{
+  const saved = loadGs();
+  if (!saved) return makeState();
+  // Si no hay moderador activo en el estado guardado, resetear
+  if (!saved.moderatorId || !saved.players?.[saved.moderatorId]) {
+    console.log('[START] Sin moderador activo, iniciando fresco');
+    return makeState();
+  }
+  console.log('[START] PID:', process.pid, '| fase:', saved.phase, '| jugadores:', Object.keys(saved.players).length);
+  return saved;
+})();
+if (!fs.existsSync(STATE_FILE)) saveGs();
+try { fs.writeFileSync(EVENTS_FILE, '[]'); } catch(e) {}
+
+// Polling cross-proceso cada 600ms
+let lastStateStr = '', lastEventsStr = '';
+setInterval(() => {
+  try {
+    // Sincronizar estado
+    if (fs.existsSync(STATE_FILE)) {
+      const raw = fs.readFileSync(STATE_FILE, 'utf8');
+      if (raw !== lastStateStr) {
+        lastStateStr = raw;
+        const fresh = JSON.parse(raw);
+        if (fresh?.phase) {
+          const oldCount = JSON.stringify(Object.keys(gs.players||{}).sort());
+          const newCount = JSON.stringify(Object.keys(fresh.players||{}).sort());
+          gs = fresh;
+          if (oldCount !== newCount) io.emit('lobbyUpdate', publicState());
+        }
+      }
+    }
+    // Relay de eventos de otros procesos
+    if (fs.existsSync(EVENTS_FILE)) {
+      const raw = fs.readFileSync(EVENTS_FILE, 'utf8');
+      if (raw !== lastEventsStr) {
+        lastEventsStr = raw;
+        const events = JSON.parse(raw);
+        if (Array.isArray(events)) {
+          events.filter(e => Date.now()-e.ts < 3000).forEach(e => {
+            const { _pid, ts, event, ...data } = e;
+            if (_pid === process.pid) return;
+            if (event === 'p1:mimeHint') {
+              if (data.mimeId) io.to(data.mimeId).emit('p1:yourTurn', { role:'mime', word:data.word, hints:data.hints });
+              if (data.guesserId) io.to(data.guesserId).emit('p1:yourTurn', { role:'guesser' });
+              io.to('team'+data.team).emit('p1:turnUpdate', { team:data.team, turn:{mime:data.mimeId,guesser:data.guesserId}, wordIndex:data.wordIndex||0, scores:data.scores||{A:0,B:0}, passes:data.passes||0 });
+            } else {
+              io.emit(event, data);
+            }
+            console.log('[RELAY]', event, 'PID', _pid);
+          });
+        }
+      }
+    }
+  } catch(e) {}
+}, 600);
 
 function shuffle(a){ const r=[...a]; for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];} return r; }
 
@@ -226,6 +193,8 @@ function publicState() {
 function pick6() { return shuffle(WORD_BANK).slice(0,6).map(w=>w.word); }
 function wordData(w) { return WORD_BANK.find(x=>x.word===w) || {word:w,hints:['pista 1','pista 2','empieza con '+w[0].toUpperCase(),w.length+' letras']}; }
 
+const TURN_TIME = 60000; // 60 segundos por turno
+
 function nextTurn(team) {
   const q = team==='A' ? gs.phase1.queueA : gs.phase1.queueB;
   if (!q.length) return;
@@ -243,14 +212,15 @@ function startTurn(team) {
   const idx = team==='A' ? p1.idxA : p1.idxB;
   const word = (team==='A' ? p1.wordsA : p1.wordsB)[idx];
   const wd = wordData(word);
-  const turnData = { team, turn, wordIndex:idx, scores:gs.scores, passes: team==='A'?p1.passesA:p1.passesB };
+  const passes = team==='A' ? p1.passesA : p1.passesB;
+  // Emitir a sockets locales
   if (turn.mime) io.to(turn.mime).emit('p1:yourTurn', { role:'mime', word, hints:wd.hints });
   if (turn.guesser) io.to(turn.guesser).emit('p1:yourTurn', { role:'guesser' });
-  io.to('team'+team).emit('p1:turnUpdate', turnData);
+  io.to('team'+team).emit('p1:turnUpdate', { team, turn, wordIndex:idx, scores:gs.scores, passes });
+  // Broadcast a otros procesos
   saveGs();
-  broadcastEvent({ event:'p1:turnUpdate', _pid:process.pid, ...turnData });
-  broadcastEvent({ event:'p1:mimeHint', _pid:process.pid, mimeId:turn.mime, guesserId:turn.guesser, word, hints:wd.hints, team });
-  p1[tk] = setTimeout(() => doPass(team,'timeout'), 30000);
+  broadcastEvent({ event:'p1:mimeHint', _pid:process.pid, mimeId:turn.mime, guesserId:turn.guesser, word, hints:wd.hints, team, wordIndex:idx, scores:gs.scores, passes });
+  p1[tk] = setTimeout(() => doPass(team,'timeout'), TURN_TIME);
 }
 
 function doPass(team, src) {
@@ -273,6 +243,7 @@ function finishPhase1Team(team) {
   if (gs.phase1.finA && gs.phase1.finB) {
     gs.phase='phase2'; saveGs();
     io.emit('phaseChange', { phase:'phase1Done', scores:gs.scores });
+    broadcastEvent({ event:'phaseChange', _pid:process.pid, phase:'phase1Done', scores:gs.scores });
   }
 }
 
@@ -282,76 +253,69 @@ function startPhase3Turn(team) {
   if (p3[tk]) clearTimeout(p3[tk]);
   const cur = team==='A' ? p3.turnA : p3.turnB;
   const word = team==='A' ? p3.wordA : p3.wordB;
-  const story = team==='A' ? p3.storyA : p3.storyB;
-  if (cur) io.to(cur).emit('p3:yourTurn', { word, team, context: story.map(s=>s.text).join(' ') });
-  io.emit('p3:turnUpdate', { team, cur, curName:gs.players[cur]?.name, word, story });
+  if (cur) io.to(cur).emit('p3:yourTurn', { word, team, story: team==='A'?p3.storyA:p3.storyB, players: Object.values(gs.players).filter(p=>p.team===team) });
+  io.emit('p3:turnUpdate', { team, cur, curName:gs.players[cur]?.name, word, story:team==='A'?p3.storyA:p3.storyB });
   p3[tk] = setTimeout(() => passPhase3(team, cur, 'timeout'), 60000);
 }
 
-function passPhase3(team, passerId, src) {
+function passPhase3(team, fromId, src) {
   const p3 = gs.phase3;
   const tk = team==='A' ? 'timerA' : 'timerB';
   if (p3[tk]) { clearTimeout(p3[tk]); p3[tk]=null; }
-  if (src!=='timeout') { gs.scores[team] -= 3; if(team==='A') p3.passesA++; else p3.passesB++; }
-  const all = [...gs.teamA,...gs.teamB].filter(id=>id!==passerId);
-  const next = all[Math.floor(Math.random()*all.length)];
-  const nextTeam = gs.players[next]?.team;
-  const isCross = nextTeam !== team;
-  const word = team==='A' ? p3.wordA : p3.wordB;
-  p3.graph.push({ from:passerId, to:next, fromTeam:team, toTeam:nextTeam, isCross, isPass:true, fromName:gs.players[passerId]?.name });
-  if (team==='A') p3.turnA=next; else p3.turnB=next;
-  if (isCross) {
-    io.to(next).emit('p3:crossTurn', { word, fromTeam:team });
-    io.emit('p3:turnUpdate', { team, cur:next, curName:gs.players[next]?.name, word, isCross:true, story:team==='A'?p3.storyA:p3.storyB });
-    p3[tk] = setTimeout(() => passPhase3(team, next, 'timeout'), 60000);
-  } else { startPhase3Turn(team); }
-  io.emit('scores', gs.scores);
+  if (src !== 'timeout') {
+    if (team==='A') { p3.passesA++; gs.scores.A-=3; }
+    else { p3.passesB++; gs.scores.B-=3; }
+  }
+  const allW = team==='A' ? p3.wordsA : p3.wordsB;
+  const used = team==='A' ? p3.usedA : p3.usedB;
+  if (used.length >= allW.length) { finishPhase3Team(team); return; }
+  const teamIds = (team==='A' ? gs.teamA : gs.teamB).filter(id=>id!==fromId);
+  const next = teamIds[Math.floor(Math.random()*teamIds.length)] || fromId;
+  const nextWord = allW[used.length];
+  if (team==='A') { p3.turnA=next; p3.wordA=nextWord; }
+  else { p3.turnB=next; p3.wordB=nextWord; }
+  startPhase3Turn(team);
 }
 
 function finishPhase3Team(team) {
-  const p3 = gs.phase3;
-  if (team==='A') p3.finA=true; else p3.finB=true;
   gs.scores[team] += 20;
-  io.emit('p3:teamDone', { team, story:team==='A'?p3.storyA:p3.storyB, scores:gs.scores });
-  if (p3.finA && p3.finB) { gs.phase='dashboard'; computeDashboard(); }
+  if (team==='A') gs.phase3.finA=true; else gs.phase3.finB=true;
+  io.emit('p3:teamDone', { team, scores:gs.scores });
+  if (gs.phase3.finA && gs.phase3.finB) {
+    gs.phase='done'; saveGs();
+    io.emit('phaseChange', { phase:'phase3Done' });
+  }
 }
 
-function computeDashboard() {
-  const p3 = gs.phase3, g = p3.graph;
-  function calcSub(team) {
-    const myIds = team==='A' ? gs.teamA : gs.teamB;
-    const active = new Set(g.filter(e=>e.fromTeam===team).map(e=>e.from).concat(g.filter(e=>e.toTeam===team&&!e.isCross).map(e=>e.to)));
-    const roles = [...active].map(id=>gs.players[id]?.role).filter(Boolean);
-    const uniq = new Set(roles);
-    const ghosts = myIds.filter(id=>!active.has(id));
-    const crosses = g.filter(e=>e.isCross&&e.fromTeam===team).length;
-    const rebounds = g.filter((e,i,a)=>i>0&&e.from===a[i-1].to&&e.to===a[i-1].from&&e.fromTeam===team).length;
-    const passes = team==='A' ? p3.passesA : p3.passesB;
-    let sub = 0;
-    if(uniq.size>=5) sub+=40; else if(uniq.size===4) sub+=20; else if(uniq.size===3) sub+=10; else sub-=10;
-    if(roles.includes('comunidad')) sub+=20;
-    if(roles.includes('org_civil')) sub+=20;
-    sub -= ghosts.length*20; sub -= crosses*10;
-    if(rebounds>=2) sub-=15;
-    sub -= Math.max(0,passes-3)*5;
-    return { sub, ghosts:ghosts.map(id=>gs.players[id]?.name||'?') };
-  }
-  const rA=calcSub('A'), rB=calcSub('B');
-  const fA=gs.scores.A+rA.sub, fB=gs.scores.B+rB.sub;
-  const winner = fA>fB?'A':fB>fA?'B':'empate';
-  const players = {};
-  Object.entries(gs.players).forEach(([id,p])=>{ players[id]={id:p.id,name:p.name,role:p.role,roleLabel:p.roleLabel,team:p.team,initials:p.initials,color:p.color,textColor:p.textColor}; });
-  io.emit('dashboard', { scores:gs.scores, subA:rA.sub, subB:rB.sub, finalA:fA, finalB:fB, winner, declA:gs.phase2.declA, declB:gs.phase2.declB, autoA:gs.phase2.autoA, autoB:gs.phase2.autoB, storyA:p3.storyA, storyB:p3.storyB, graph:p3.graph, ghostsA:rA.ghosts, ghostsB:rB.ghosts, wordsA:p3.wordsA, wordsB:p3.wordsB, players });
+function calcSubScore(team) {
+  const p3=gs.phase3;
+  const teamIds=team==='A'?gs.teamA:gs.teamB;
+  const graph=p3.graph;
+  const received=new Set(graph.map(e=>e.to));
+  const ghosts=teamIds.filter(id=>!received.has(id)&&gs.players[id]?.role!=='universidad');
+  const roles=[...new Set(teamIds.filter(id=>received.has(id)).map(id=>gs.players[id]?.role))];
+  const uniq=new Set(roles);
+  const crosses=graph.filter(e=>e.fromTeam!==e.toTeam).length;
+  const rebounds=graph.filter((e,i)=>i>0&&graph[i-1].from===e.to&&graph[i-1].to===e.from).length;
+  const passes=team==='A'?p3.passesA:p3.passesB;
+  let sub=0;
+  if(uniq.size>=5) sub+=40; else if(uniq.size===4) sub+=20; else if(uniq.size===3) sub+=10; else sub-=10;
+  if(roles.includes('comunidad')) sub+=20;
+  if(roles.includes('org_civil')) sub+=20;
+  sub-=ghosts.length*20; sub-=crosses*10;
+  if(rebounds>=2) sub-=15;
+  sub-=Math.max(0,passes-3)*5;
+  return { sub, ghosts:ghosts.map(id=>gs.players[id]?.name||'?') };
 }
 
 io.on('connection', socket => {
   console.log('connected:', socket.id);
 
   socket.on('join', ({ name, isModerator, password }) => {
-    gs = loadGs() || gs; // Siempre leer estado mas reciente del disco
+    gs = loadGs() || gs;
     const trimName = name.trim();
 
-    // Limpiar socket anterior si existe
+    // Limpiar mismo socket si ya existe
     if (gs.players[socket.id]) {
       gs.teamA = gs.teamA.filter(id=>id!==socket.id);
       gs.teamB = gs.teamB.filter(id=>id!==socket.id);
@@ -368,34 +332,42 @@ io.on('connection', socket => {
       gs.teamB = gs.teamB.map(id=>id===oldId?socket.id:id);
       if (gs.moderatorId===oldId) gs.moderatorId=socket.id;
       const p = gs.players[socket.id];
-      if (isModerator) { socket.join('moderator'); socket.emit('joined',{id:socket.id,isModerator:true,isNew:false}); }
-      else { socket.join('team'+p.team); socket.emit('joined',{id:socket.id,isModerator:false,isNew:false,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor}); }
-      if (gs.phase==='lobby') socket.emit('restoreState',{phase:'lobby', state:publicState()});
-      else if (gs.phase==='phase1') socket.emit('restoreState',{phase:'phase1',state:publicState(),scores:gs.scores});
-      else if (gs.phase==='phase2') socket.emit('restoreState',{phase:'phase2',timeA:gs.phase2.timeA,timeB:gs.phase2.timeB,wordsA:gs.phase1.guessedA,wordsB:gs.phase1.guessedB});
-      else if (gs.phase==='phase3') socket.emit('restoreState',{phase:'phase3',state:publicState(),wordsA:gs.phase3.wordsA,wordsB:gs.phase3.wordsB});
+      if (isModerator) {
+        socket.join('moderator');
+        socket.emit('joined',{id:socket.id,isModerator:true,isNew:false});
+      } else {
+        socket.join('team'+p.team);
+        socket.emit('joined',{id:socket.id,isModerator:false,isNew:false,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor});
+      }
+      const phase = gs.phase;
+      if (phase==='lobby') socket.emit('restoreState',{phase:'lobby'});
+      else if (phase==='phase1') socket.emit('restoreState',{phase:'phase1',state:publicState(),scores:gs.scores});
+      else if (phase==='phase2') socket.emit('restoreState',{phase:'phase2',timeA:gs.phase2.timeA,timeB:gs.phase2.timeB,wordsA:gs.phase1.guessedA,wordsB:gs.phase1.guessedB});
+      else if (phase==='phase3') socket.emit('restoreState',{phase:'phase3',state:publicState(),wordsA:gs.phase3.wordsA,wordsB:gs.phase3.wordsB});
       saveGs(); io.emit('lobbyUpdate', publicState());
-      console.log('[REJOIN]', trimName, gs.phase);
+      broadcastEvent({event:'lobbyUpdate',_pid:process.pid,...publicState()});
+      console.log('[REJOIN]', trimName, phase);
       return;
     }
 
-    // Validar contrasena de moderador
+    // Validar moderador
     if (isModerator) {
-      if (password !== MOD_PASSWORD) { socket.emit('joinError',{msg:'Contrasena incorrecta.'}); return; }
-      // Moderador nuevo: siempre limpiar estado anterior para empezar sesion fresca
+      if (password !== MOD_PASSWORD) { socket.emit('joinError',{msg:'Contraseña incorrecta.'}); return; }
+      // Nueva sesión: limpiar estado
       gs = makeState();
       saveGs();
-      console.log('[RESET] Nueva sesion iniciada por moderador');
+      console.log('[RESET] Nueva sesión por moderador:', trimName);
     } else {
-      // Jugadores no pueden entrar sin moderador activo en esta sesion
+      // Jugadores necesitan moderador activo
       const hasMod = gs.moderatorId && gs.players[gs.moderatorId]?.isModerator;
-      if (!hasMod) { socket.emit('joinError',{msg:'Aun no hay moderador. Espera a que el moderador abra la sala.'}); return; }
+      if (!hasMod) { socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que el moderador abra la sala.'}); return; }
+      if (gs.phase !== 'lobby') { socket.emit('joinError',{msg:'El juego ya inició. No puedes unirte ahora.'}); return; }
     }
 
-    // Bloquear nuevos si juego activo
-    if (!isModerator && gs.phase !== 'lobby') { socket.emit('joinError',{msg:'El juego ya inicio.'}); return; }
     // Nombre duplicado
-    if (Object.values(gs.players).some(p=>p.name===trimName&&p.isModerator===!!isModerator)) { socket.emit('joinError',{msg:'Ese nombre ya esta en uso.'}); return; }
+    if (Object.values(gs.players).some(p=>p.name===trimName&&p.isModerator===!!isModerator)) {
+      socket.emit('joinError',{msg:'Ese nombre ya está en uso. Elige otro.'}); return;
+    }
 
     // Nuevo jugador
     const initials = trimName.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
@@ -408,14 +380,14 @@ io.on('connection', socket => {
       const p=gs.players[socket.id]; socket.join('team'+p.team);
       socket.emit('joined',{id:socket.id,isModerator:false,isNew:true,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor});
     }
-    socket.emit('restoreState',{phase:'lobby', state:publicState()});
-    saveGs(); io.emit('lobbyUpdate', publicState()); broadcastEvent({event:'lobbyUpdate',_pid:process.pid,...publicState()});
+    socket.emit('restoreState',{phase:'lobby'});
+    saveGs(); io.emit('lobbyUpdate', publicState());
+    broadcastEvent({event:'lobbyUpdate',_pid:process.pid,...publicState()});
     console.log('[NEW]', trimName, gs.players[socket.id]?.team||'mod');
   });
 
   socket.on('startGame', () => {
     if (socket.id !== gs.moderatorId) return;
-    gs = loadGs() || gs;
     gs.phase = 'phase1';
     gs.phase1.wordsA = pick6(); gs.phase1.wordsB = pick6();
     gs.phase1.idxA=0; gs.phase1.idxB=0;
@@ -425,11 +397,11 @@ io.on('connection', socket => {
     gs.phase1.queueA=shuffle([...gs.teamA]);
     gs.phase1.queueB=shuffle([...gs.teamB]);
     nextTurn('A'); nextTurn('B');
-    saveGs();
     const p1data = { phase:'phase1', state:publicState() };
+    saveGs();
     io.emit('phaseChange', p1data);
     broadcastEvent({ event:'phaseChange', _pid:process.pid, ...p1data });
-    setTimeout(() => { nextTurn('A'); nextTurn('B'); startTurn('A'); startTurn('B'); }, 500);
+    setTimeout(() => { startTurn('A'); startTurn('B'); }, 800);
   });
 
   socket.on('p1:emoji', ({ emoji }) => {
@@ -475,8 +447,10 @@ io.on('connection', socket => {
 
   socket.on('startPhase2', () => {
     if(socket.id!==gs.moderatorId) return;
-    gs.phase='phase2';
-    io.emit('phaseChange',{phase:'phase2',timeA:gs.phase2.timeA,timeB:gs.phase2.timeB,wordsA:gs.phase1.guessedA,wordsB:gs.phase1.guessedB});
+    gs.phase='phase2'; saveGs();
+    const p2data = {phase:'phase2',timeA:gs.phase2.timeA,timeB:gs.phase2.timeB,wordsA:gs.phase1.guessedA,wordsB:gs.phase1.guessedB};
+    io.emit('phaseChange', p2data);
+    broadcastEvent({event:'phaseChange',_pid:process.pid,...p2data});
   });
 
   socket.on('p2:submit', ({ text, isAuto }) => {
@@ -484,8 +458,12 @@ io.on('connection', socket => {
     const team=p.team;
     if(team==='A'){gs.phase2.declA=text;gs.phase2.autoA=!!isAuto;gs.phase2.finA=true;if(isAuto)gs.scores.A-=50;}
     else{gs.phase2.declB=text;gs.phase2.autoB=!!isAuto;gs.phase2.finB=true;if(isAuto)gs.scores.B-=50;}
+    saveGs();
     io.emit('p2:submitted',{team,scores:gs.scores});
-    if(gs.phase2.finA&&gs.phase2.finB) io.emit('phaseChange',{phase:'phase2Done'});
+    if(gs.phase2.finA&&gs.phase2.finB){
+      io.emit('phaseChange',{phase:'phase2Done'});
+      broadcastEvent({event:'phaseChange',_pid:process.pid,phase:'phase2Done'});
+    }
   });
 
   socket.on('startPhase3', () => {
@@ -498,7 +476,10 @@ io.on('connection', socket => {
     const uniA=gs.teamA.find(id=>gs.players[id]?.role==='universidad')||gs.teamA[0];
     const uniB=gs.teamB.find(id=>gs.players[id]?.role==='universidad')||gs.teamB[0];
     p3.turnA=uniA; p3.turnB=uniB; p3.wordA=p3.wordsA[0]; p3.wordB=p3.wordsB[0];
-    io.emit('phaseChange',{phase:'phase3',state:publicState(),wordsA:p3.wordsA,wordsB:p3.wordsB});
+    saveGs();
+    const p3data={phase:'phase3',state:publicState(),wordsA:p3.wordsA,wordsB:p3.wordsB};
+    io.emit('phaseChange',p3data);
+    broadcastEvent({event:'phaseChange',_pid:process.pid,...p3data});
     setTimeout(()=>{startPhase3Turn('A');startPhase3Turn('B');},500);
   });
 
@@ -518,6 +499,7 @@ io.on('connection', socket => {
     if(nextId) p3.graph.push({from:socket.id,to:nextId,fromTeam:team,toTeam:gs.players[nextId]?.team,isCross:gs.players[nextId]?.team!==team,fromName:p.name});
     const used=team==='A'?p3.usedA:p3.usedB;
     const allW=team==='A'?p3.wordsA:p3.wordsB;
+    saveGs();
     io.emit('p3:update',{team,story:team==='A'?p3.storyA:p3.storyB,used,graph:p3.graph,scores:gs.scores});
     if(used.length>=allW.length){finishPhase3Team(team);return;}
     const nextWord=allW[used.length];
@@ -532,37 +514,42 @@ io.on('connection', socket => {
 
   socket.on('p3:pass', () => { const p=gs.players[socket.id]; if(!p) return; passPhase3(p.team,socket.id,'voluntary'); });
 
+  socket.on('showDashboard', () => {
+    if(socket.id!==gs.moderatorId) return;
+    const p3=gs.phase3;
+    const rA=calcSubScore('A'), rB=calcSubScore('B');
+    const fA=gs.scores.A+rA.sub, fB=gs.scores.B+rB.sub;
+    const winner = fA>fB?'A':fB>fA?'B':'empate';
+    const players = {};
+    Object.entries(gs.players).forEach(([id,p])=>{ players[id]={id:p.id,name:p.name,role:p.role,roleLabel:p.roleLabel,team:p.team,initials:p.initials,color:p.color,textColor:p.textColor}; });
+    io.emit('dashboard',{scores:gs.scores,subA:rA.sub,subB:rB.sub,finalA:fA,finalB:fB,winner,declA:gs.phase2.declA,declB:gs.phase2.declB,autoA:gs.phase2.autoA,autoB:gs.phase2.autoB,storyA:p3.storyA,storyB:p3.storyB,graph:p3.graph,ghostsA:rA.ghosts,ghostsB:rB.ghosts,wordsA:p3.wordsA,wordsB:p3.wordsB,players});
+  });
+
   socket.on('reset', () => {
     if(socket.id!==gs.moderatorId) return;
     [gs.phase1.timerA,gs.phase1.timerB,gs.phase3.timerA,gs.phase3.timerB].forEach(t=>{if(t)clearTimeout(t);});
-    const newState = makeState();
-    newState.moderatorId = socket.id; // Keep moderator active after reset
-    newState.players[socket.id] = gs.players[socket.id]; // Keep mod player
-    gs = newState;
-    saveGs(); io.emit('reset');
+    const modPlayer = gs.players[socket.id];
+    gs = makeState();
+    if (modPlayer) { gs.players[socket.id]=modPlayer; gs.moderatorId=socket.id; }
+    saveGs();
+    io.emit('reset');
+    broadcastEvent({event:'reset',_pid:process.pid});
   });
 
   socket.on('disconnect', () => {
     const sid = socket.id;
-    // Esperar 4 segundos antes de borrar — da tiempo a reconexiones
     setTimeout(() => {
       const fresh = loadGs() || gs;
-      // Solo borrar si el socket ID sigue siendo el mismo (no fue reasignado)
-      if (!fresh.players[sid]) return;
+      if (!fresh.players[sid]) return; // Ya fue reasignado
       gs = fresh;
       delete gs.players[sid];
       gs.teamA = gs.teamA.filter(id=>id!==sid);
       gs.teamB = gs.teamB.filter(id=>id!==sid);
       saveGs();
       io.emit('lobbyUpdate', publicState());
-      console.log('[DISC]', sid, 'eliminado tras timeout');
     }, 4000);
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log('Desacople running on port', PORT);
-  if (fs.existsSync(STATE_FILE)) startFileWatcher();
-  else { fs.writeFileSync(STATE_FILE, JSON.stringify(makeState())); startFileWatcher(); }
-});
+server.listen(PORT, () => console.log('Desacople running on port', PORT));
