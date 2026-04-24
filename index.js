@@ -33,28 +33,70 @@ function loadGs() {
 process.on('uncaughtException', err => console.error('[CRASH]', err.message));
 process.on('unhandledRejection', r => console.error('[REJECT]', String(r)));
 
-// Polling del archivo de estado cada 800ms para sincronizar entre procesos
-let lastStateMd5 = '';
+// Polling del archivo de estado cada 600ms para sincronizar entre procesos
+const EVENTS_FILE = '/tmp/desacople_events.json';
+let lastStateStr = '';
+let lastEventsStr = '';
+
+function broadcastEvent(eventData) {
+  // Guardar evento en archivo para que otros procesos lo reenvien a sus clientes
+  try {
+    const events = [];
+    try { const e = JSON.parse(fs.readFileSync(EVENTS_FILE,'utf8')); if(Array.isArray(e)) events.push(...e); } catch(e2){}
+    events.push({ ...eventData, ts: Date.now() });
+    // Solo guardar eventos de los ultimos 5 segundos
+    const fresh = events.filter(e => Date.now() - e.ts < 5000);
+    fs.writeFileSync(EVENTS_FILE, JSON.stringify(fresh));
+  } catch(e) {}
+}
+
 function startFileWatcher() {
   setInterval(() => {
     try {
-      if (!fs.existsSync(STATE_FILE)) return;
-      const raw = fs.readFileSync(STATE_FILE, 'utf8');
-      if (raw === lastStateMd5) return; // Sin cambios
-      lastStateMd5 = raw;
-      const fresh = JSON.parse(raw);
-      if (!fresh || typeof fresh.phase !== 'string') return;
-      // Solo sincronizar si hay diferencia real en jugadores o fase
-      const oldPlayers = JSON.stringify(Object.keys(gs.players||{}).sort());
-      const newPlayers = JSON.stringify(Object.keys(fresh.players||{}).sort());
-      if (oldPlayers !== newPlayers || fresh.phase !== gs.phase) {
-        gs = fresh;
-        if (io) io.emit('lobbyUpdate', publicState());
-        console.log('[SYNC] Estado actualizado desde disco, jugadores:', Object.keys(gs.players||{}).length);
+      // 1. Sincronizar estado (jugadores, fase)
+      if (fs.existsSync(STATE_FILE)) {
+        const raw = fs.readFileSync(STATE_FILE, 'utf8');
+        if (raw !== lastStateStr) {
+          lastStateStr = raw;
+          const fresh = JSON.parse(raw);
+          if (fresh && fresh.phase) {
+            const oldPhase = gs.phase;
+            const oldCount = JSON.stringify(Object.keys(gs.players||{}).sort());
+            const newCount = JSON.stringify(Object.keys(fresh.players||{}).sort());
+            gs = fresh;
+            if (oldCount !== newCount) io.emit('lobbyUpdate', publicState());
+          }
+        }
+      }
+      // 2. Reenviar eventos de otros procesos
+      if (fs.existsSync(EVENTS_FILE)) {
+        const raw = fs.readFileSync(EVENTS_FILE, 'utf8');
+        if (raw !== lastEventsStr) {
+          lastEventsStr = raw;
+          const events = JSON.parse(raw);
+          if (Array.isArray(events)) {
+            events.filter(e => Date.now() - e.ts < 3000).forEach(e => {
+              const { _pid, ts, event, ...data } = e;
+              if (_pid === process.pid) return; // No re-emitir propios
+              if (!io) return;
+              if (event === 'p1:mimeHint') {
+                // Enviar yourTurn solo a mime y guesser correctos
+                if (data.mimeId) io.to(data.mimeId).emit('p1:yourTurn', { role:'mime', word:data.word, hints:data.hints });
+                if (data.guesserId) io.to(data.guesserId).emit('p1:yourTurn', { role:'guesser' });
+                io.to('team'+data.team).emit('p1:turnUpdate', { team:data.team, turn:{mime:data.mimeId,guesser:data.guesserId}, wordIndex:data.wordIndex||0, scores:data.scores||{A:0,B:0}, passes:data.passes||0 });
+              } else {
+                io.emit(event, data);
+              }
+              console.log('[RELAY]', event, 'desde PID', _pid);
+            });
+          }
+        }
       }
     } catch(e) {}
-  }, 800);
-  console.log('[WATCH] Polling activo cada 800ms');
+  }, 600);
+  // Limpiar archivo de eventos al arrancar
+  try { fs.writeFileSync(EVENTS_FILE, '[]'); } catch(e) {}
+  console.log('[WATCH] Polling activo 600ms');
 }
 
 const app = express();
@@ -201,9 +243,13 @@ function startTurn(team) {
   const idx = team==='A' ? p1.idxA : p1.idxB;
   const word = (team==='A' ? p1.wordsA : p1.wordsB)[idx];
   const wd = wordData(word);
+  const turnData = { team, turn, wordIndex:idx, scores:gs.scores, passes: team==='A'?p1.passesA:p1.passesB };
   if (turn.mime) io.to(turn.mime).emit('p1:yourTurn', { role:'mime', word, hints:wd.hints });
   if (turn.guesser) io.to(turn.guesser).emit('p1:yourTurn', { role:'guesser' });
-  io.to('team'+team).emit('p1:turnUpdate', { team, turn, wordIndex:idx, scores:gs.scores, passes: team==='A'?p1.passesA:p1.passesB });
+  io.to('team'+team).emit('p1:turnUpdate', turnData);
+  saveGs();
+  broadcastEvent({ event:'p1:turnUpdate', _pid:process.pid, ...turnData });
+  broadcastEvent({ event:'p1:mimeHint', _pid:process.pid, mimeId:turn.mime, guesserId:turn.guesser, word, hints:wd.hints, team });
   p1[tk] = setTimeout(() => doPass(team,'timeout'), 30000);
 }
 
@@ -363,7 +409,7 @@ io.on('connection', socket => {
       socket.emit('joined',{id:socket.id,isModerator:false,isNew:true,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor});
     }
     socket.emit('restoreState',{phase:'lobby', state:publicState()});
-    saveGs(); io.emit('lobbyUpdate', publicState());
+    saveGs(); io.emit('lobbyUpdate', publicState()); broadcastEvent({event:'lobbyUpdate',_pid:process.pid,...publicState()});
     console.log('[NEW]', trimName, gs.players[socket.id]?.team||'mod');
   });
 
@@ -380,8 +426,10 @@ io.on('connection', socket => {
     gs.phase1.queueB=shuffle([...gs.teamB]);
     nextTurn('A'); nextTurn('B');
     saveGs();
-    io.emit('phaseChange', { phase:'phase1', state:publicState() });
-    setTimeout(() => { startTurn('A'); startTurn('B'); }, 500);
+    const p1data = { phase:'phase1', state:publicState() };
+    io.emit('phaseChange', p1data);
+    broadcastEvent({ event:'phaseChange', _pid:process.pid, ...p1data });
+    setTimeout(() => { nextTurn('A'); nextTurn('B'); startTurn('A'); startTurn('B'); }, 500);
   });
 
   socket.on('p1:emoji', ({ emoji }) => {
