@@ -267,16 +267,24 @@ textarea{resize:none;line-height:1.5;}
     <div class="card" style="text-align:center;">
       <div class="game-logo">des<span>a</span>cople</div>
       <p style="font-size:13px;color:#888;margin-bottom:24px;line-height:1.5;">Un juego sobre el compromiso ambiental universitario y lo que realmente ocurre en red.</p>
-      <label for="pname">Tu nombre</label>
-      <input type="text" id="pname" placeholder="¿Cómo te llamamos?" style="margin-bottom:14px;">
-      <button class="btn btn-dark" onclick="joinGame(false)">Entrar al juego →</button>
-      <div class="divider"><div class="div-line"></div><span class="div-text">¿eres el moderador?</span><div class="div-line"></div></div>
-      <div id="mod-pass-area" style="display:none;margin-bottom:10px;">
-        <label for="mod-pass">Contraseña</label>
-        <input type="password" id="mod-pass" placeholder="Contraseña de moderador" style="margin-bottom:10px;width:100%;border:1px solid #ddd;border-radius:9px;padding:10px 13px;font-size:14px;font-family:inherit;outline:none;">
-        <button class="btn btn-dark" onclick="joinGame(true)">Entrar como moderador →</button>
+
+      <div id="view-player">
+        <label for="pname">Tu nombre</label>
+        <input type="text" id="pname" placeholder="¿Cómo te llamamos?" style="margin-bottom:14px;">
+        <button class="btn btn-dark" onclick="joinGame(false)">Entrar al juego →</button>
+        <div class="divider"><div class="div-line"></div><span class="div-text">¿eres el moderador?</span><div class="div-line"></div></div>
+        <a class="link" onclick="switchView('mod')">Acceder como moderador →</a>
       </div>
-      <a class="link" id="mod-link" onclick="document.getElementById('mod-pass-area').style.display='block';document.getElementById('mod-link').style.display='none';">Acceder como moderador →</a>
+
+      <div id="view-mod" style="display:none;">
+        <label for="pname-mod">Tu nombre</label>
+        <input type="text" id="pname-mod" placeholder="Nombre del moderador" style="margin-bottom:10px;">
+        <label for="mod-pass">Contraseña</label>
+        <input type="password" id="mod-pass" placeholder="Contraseña de moderador" style="margin-bottom:14px;">
+        <button class="btn btn-dark" onclick="joinGame(true)">Entrar como moderador →</button>
+        <div class="divider"><div class="div-line"></div><div class="div-line"></div></div>
+        <a class="link" onclick="switchView('player')">← Volver</a>
+      </div>
     </div>
   </div>
 </div>
@@ -438,12 +446,19 @@ function mkAv(ini,bg,tc,sz=24){const d=document.createElement('div');d.style.css
 function makePd(i,st){const d=document.createElement('div');d.className='pd'+(st==='done'?' done':st==='cur'?' cur':'');d.textContent=i+1;return d;}
 function hiWord(text,word,cls){if(!word)return text;return text.replace(new RegExp('('+word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<span class="'+cls+'">$1</span>');}
 
+function switchView(v){
+  document.getElementById('view-player').style.display=v==='player'?'':'none';
+  document.getElementById('view-mod').style.display=v==='mod'?'':'none';
+}
+
 function joinGame(asMod){
-  const name=document.getElementById('pname').value.trim();
+  const nameEl=asMod?document.getElementById('pname-mod'):document.getElementById('pname');
+  const name=nameEl.value.trim();
   if(!name){notif('Escribe tu nombre primero');return;}
+  const password=asMod?(document.getElementById('mod-pass').value.trim()):'';
+  if(asMod&&!password){notif('Escribe la contraseña');return;}
   myName=name;isMod=asMod;
   myInitials=name.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
-  const password=asMod?(document.getElementById('mod-pass').value.trim()):'';
   socket.emit('join',{name,isModerator:asMod,password});
 }
 socket.on('joinError',({msg})=>notif(msg,5000));
