@@ -1,11 +1,35 @@
 const express = require('express');
-
-// Evitar crashes silenciosos
-process.on('uncaughtException', err => console.error('[ERROR]', err.message));
-process.on('unhandledRejection', reason => console.error('[REJECT]', String(reason)));
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
+
+// ── ESTADO COMPARTIDO EN DISCO ───────────────────────────────────────────────
+// Multiples procesos PM2 comparten el mismo estado via archivo en /tmp
+const STATE_FILE = '/tmp/desacople_gs.json';
+
+function saveGs() {
+  try {
+    const copy = JSON.parse(JSON.stringify(gs, (k,v) =>
+      (k==='timerA'||k==='timerB') ? null : v
+    ));
+    fs.writeFileSync(STATE_FILE, JSON.stringify(copy), 'utf8');
+  } catch(e) { console.error('[SAVE_ERR]', e.message); }
+}
+
+function loadGs() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      const raw = fs.readFileSync(STATE_FILE, 'utf8');
+      const data = JSON.parse(raw);
+      if (data && typeof data.phase === 'string') return data;
+    }
+  } catch(e) { console.error('[LOAD_ERR]', e.message); }
+  return null;
+}
+
+process.on('uncaughtException', err => console.error('[CRASH]', err.message));
+process.on('unhandledRejection', r => console.error('[REJECT]', String(r)));
 
 const app = express();
 const server = http.createServer(app);
@@ -43,7 +67,8 @@ const ROLE_COLORS = {
   comunidad:  { bg:'#D3D1C7', text:'#444441' }
 };
 
-let gs = makeState();
+let gs = loadGs() || makeState();
+console.log("[START] PID:", process.pid, "fase:", gs.phase, "jugadores:", Object.keys(gs.players||{}).length);
 
 function makeState() {
   return {
@@ -162,7 +187,7 @@ function finishPhase1Team(team) {
   else { gs.phase1.finB=true; gs.phase2.timeB=210; }
   io.emit('p1:teamDone', { team, scores:gs.scores, words: team==='A'?gs.phase1.guessedA:gs.phase1.guessedB });
   if (gs.phase1.finA && gs.phase1.finB) {
-    gs.phase='phase2';
+    gs.phase='phase2'; saveGs();
     io.emit('phaseChange', { phase:'phase1Done', scores:gs.scores });
   }
 }
@@ -239,12 +264,17 @@ io.on('connection', socket => {
   console.log('connected:', socket.id);
 
   socket.on('join', ({ name, isModerator }) => {
+    gs = loadGs() || gs; // Siempre leer estado mas reciente del disco
     const trimName = name.trim();
+
+    // Limpiar socket anterior si existe
     if (gs.players[socket.id]) {
       gs.teamA = gs.teamA.filter(id=>id!==socket.id);
       gs.teamB = gs.teamB.filter(id=>id!==socket.id);
       delete gs.players[socket.id];
     }
+
+    // Reconexion: mismo nombre ya existe
     const prev = Object.entries(gs.players).find(([id,p])=>p.name===trimName&&p.isModerator===!!isModerator);
     if (prev) {
       const [oldId, oldP] = prev;
@@ -260,23 +290,35 @@ io.on('connection', socket => {
       else if (gs.phase==='phase1') socket.emit('restoreState',{phase:'phase1',state:publicState(),scores:gs.scores});
       else if (gs.phase==='phase2') socket.emit('restoreState',{phase:'phase2',timeA:gs.phase2.timeA,timeB:gs.phase2.timeB,wordsA:gs.phase1.guessedA,wordsB:gs.phase1.guessedB});
       else if (gs.phase==='phase3') socket.emit('restoreState',{phase:'phase3',state:publicState(),wordsA:gs.phase3.wordsA,wordsB:gs.phase3.wordsB});
-      io.emit('lobbyUpdate', publicState());
+      saveGs(); io.emit('lobbyUpdate', publicState());
       console.log('[REJOIN]', trimName, gs.phase);
       return;
     }
+
+    // Bloquear nuevos si juego activo
     if (gs.phase !== 'lobby') { socket.emit('joinError',{msg:'El juego ya inicio.'}); return; }
+    // Nombre duplicado
     if (Object.values(gs.players).some(p=>p.name===trimName&&p.isModerator===!!isModerator)) { socket.emit('joinError',{msg:'Ese nombre ya esta en uso.'}); return; }
+
+    // Nuevo jugador
     const initials = trimName.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
     gs.players[socket.id] = {id:socket.id,name:trimName,initials,isModerator:!!isModerator,role:null,roleLabel:null,team:null,color:'#ddd',textColor:'#333'};
-    if (isModerator) { gs.moderatorId=socket.id; socket.join('moderator'); socket.emit('joined',{id:socket.id,isModerator:true,isNew:true}); }
-    else { assignPlayerToTeam(socket.id); const p=gs.players[socket.id]; socket.join('team'+p.team); socket.emit('joined',{id:socket.id,isModerator:false,isNew:true,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor}); }
+    if (isModerator) {
+      gs.moderatorId=socket.id; socket.join('moderator');
+      socket.emit('joined',{id:socket.id,isModerator:true,isNew:true});
+    } else {
+      assignPlayerToTeam(socket.id);
+      const p=gs.players[socket.id]; socket.join('team'+p.team);
+      socket.emit('joined',{id:socket.id,isModerator:false,isNew:true,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor});
+    }
     socket.emit('restoreState',{phase:'lobby'});
-    io.emit('lobbyUpdate', publicState());
+    saveGs(); io.emit('lobbyUpdate', publicState());
     console.log('[NEW]', trimName, gs.players[socket.id]?.team||'mod');
   });
 
   socket.on('startGame', () => {
     if (socket.id !== gs.moderatorId) return;
+    gs = loadGs() || gs;
     gs.phase = 'phase1';
     gs.phase1.wordsA = pick6(); gs.phase1.wordsB = pick6();
     gs.phase1.idxA=0; gs.phase1.idxB=0;
@@ -286,6 +328,7 @@ io.on('connection', socket => {
     gs.phase1.queueA=shuffle([...gs.teamA]);
     gs.phase1.queueB=shuffle([...gs.teamB]);
     nextTurn('A'); nextTurn('B');
+    saveGs();
     io.emit('phaseChange', { phase:'phase1', state:publicState() });
     setTimeout(() => { startTurn('A'); startTurn('B'); }, 500);
   });
@@ -393,7 +436,7 @@ io.on('connection', socket => {
   socket.on('reset', () => {
     if(socket.id!==gs.moderatorId) return;
     [gs.phase1.timerA,gs.phase1.timerB,gs.phase3.timerA,gs.phase3.timerB].forEach(t=>{if(t)clearTimeout(t);});
-    gs=makeState(); io.emit('reset');
+    gs=makeState(); saveGs(); io.emit('reset');
   });
 
   socket.on('disconnect', () => {
@@ -402,6 +445,7 @@ io.on('connection', socket => {
       delete gs.players[socket.id];
       gs.teamA=gs.teamA.filter(id=>id!==socket.id);
       gs.teamB=gs.teamB.filter(id=>id!==socket.id);
+      saveGs();
       io.emit('lobbyUpdate',publicState());
     }
   });
