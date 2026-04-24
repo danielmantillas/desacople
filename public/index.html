@@ -438,18 +438,15 @@ textarea{resize:none;line-height:1.5;}
 </div>
 
 <script>
-const socket=io({transports:['websocket','polling'],reconnection:true,reconnectionDelay:1500});
+const socket=io({transports:['polling'],reconnection:true,reconnectionDelay:2000});
 let myId=null,myName='',myRole=null,myRoleLabel='',myTeam=null,myColor='#ddd',myTextColor='#333',myInitials='',isMod=false;
 let gs={},p1Timer=null,p1Time=30,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
 let emojiStr='',selNext=null,dashData=null,subRevealed=false;
-
-const ROLE_DESCS={universidad:'Representas la institucion academica. Tienes el compromiso formal, pero tambien la distancia del territorio.',gobierno:'Representas la institucionalidad publica. Tienes poder de decision, pero tambien de omision.',empresa:'Representas los intereses productivos. Tu logica es la eficiencia, tu riesgo es el greenwashing.',org_civil:'Representas la sociedad organizada. Eres el puente entre la norma y la comunidad.',comunidad:'Representas a quienes viven el territorio. Tu voz es la mas legitima y la menos escuchada.'};
+const ROLE_DESCS={universidad:'Representas la institucion academica. Tienes el compromiso formal, pero tambien la distancia del territorio.',gobierno:'Representas la institucionalidad publica. Tienes poder de decision, pero tambien de omision.',empresa:'Tu logica es la eficiencia, tu riesgo es el greenwashing.',org_civil:'Representas la sociedad organizada. Eres el puente entre la norma y la comunidad.',comunidad:'Tu voz es la mas legitima y la menos escuchada.'};
 const ROLE_TYPE={universidad:'Actor Institucional',gobierno:'Actor Territorial',empresa:'Actor Economico',org_civil:'Actor Social',comunidad:'Actor Comunitario'};
-
-function saveSession(extra){const d={name:myName,isMod,role:myRole,roleLabel:myRoleLabel,team:myTeam,color:myColor,textColor:myTextColor,initials:myInitials,...(extra||{})};try{sessionStorage.setItem('dscp',JSON.stringify(d));}catch(e){}}
+function saveSession(){try{sessionStorage.setItem('dscp',JSON.stringify({name:myName,isMod,role:myRole,roleLabel:myRoleLabel,team:myTeam,color:myColor,textColor:myTextColor,initials:myInitials}));}catch(e){}}
 function clearSession(){try{sessionStorage.removeItem('dscp');}catch(e){}}
 function loadSession(){try{return JSON.parse(sessionStorage.getItem('dscp')||'null');}catch(e){return null;}}
-
 
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);}
 function notif(msg,d=3000){const n=document.createElement('div');n.className='notif';n.textContent=msg;document.body.appendChild(n);setTimeout(()=>n.remove(),d);}
@@ -457,6 +454,9 @@ function fmt(s){return Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60;}
 function mkAv(ini,bg,tc,sz=24){const d=document.createElement('div');d.style.cssText='background:'+bg+';color:'+tc+';width:'+sz+'px;height:'+sz+'px;font-size:'+Math.floor(sz*.38)+'px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;';d.textContent=ini;return d;}
 function makePd(i,st){const d=document.createElement('div');d.className='pd'+(st==='done'?' done':st==='cur'?' cur':'');d.textContent=i+1;return d;}
 function hiWord(text,word,cls){if(!word)return text;return text.replace(new RegExp('('+word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<span class="'+cls+'">$1</span>');}
+
+// Pre-llenar nombre si hay sesion guardada
+(function(){const s=loadSession();if(s&&s.name)document.addEventListener('DOMContentLoaded',()=>{const el=document.getElementById('pname');if(el)el.value=s.name;});})();
 
 function joinGame(asMod){
   const name=document.getElementById('pname').value.trim();
@@ -469,53 +469,34 @@ socket.on('joinError',({msg})=>notif(msg,4000));
 
 socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor})=>{
   myId=id;
-  if(isModerator){
-    saveSession();
-    // restoreState definira la pantalla correcta; lobby es default
-    document.getElementById('mod-bar').classList.remove('hidden');
-    document.getElementById('wait-bar').classList.add('hidden');
-  } else {
-    myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;
-    saveSession();
-  }
+  if(!isModerator){myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;}
+  saveSession();
   document.getElementById('lobby-url').textContent=window.location.host;
+  if(isModerator){document.getElementById('mod-bar').classList.remove('hidden');document.getElementById('wait-bar').classList.add('hidden');showScreen('s-lobby');}
+  else{setTimeout(()=>{if(document.querySelector('.screen.active').id==='s-land')showRoleScreen(myRole,myRoleLabel,myTeam,myColor,myTextColor);},400);}
 });
 
 socket.on('restoreState',(data)=>{
-  const {phase}=data;
-  if(phase==='lobby'){
-    showScreen('s-lobby');
-    renderMyRoleBanner();
+  if(data.state)gs=data.state;
+  if(data.phase==='lobby'){
+    showScreen('s-lobby');renderMyRoleBanner();
     if(isMod){document.getElementById('mod-bar').classList.remove('hidden');document.getElementById('wait-bar').classList.add('hidden');}
-  } else if(phase==='phase1'){
-    if(data.state)gs=data.state;
-    showScreen('s-lobby'); renderMyRoleBanner();
-    setTimeout(()=>initP1(),100);
-  } else if(phase==='phase2'){
-    showScreen('s-lobby'); renderMyRoleBanner();
-    setTimeout(()=>initP2(data.timeA,data.timeB,data.wordsA,data.wordsB),100);
-  } else if(phase==='phase3'){
-    if(data.state)gs=data.state;
-    showScreen('s-lobby'); renderMyRoleBanner();
-    setTimeout(()=>initP3(),100);
+  } else if(data.phase==='phase1'){
+    showScreen('s-lobby');renderMyRoleBanner();
+    setTimeout(()=>initP1(),80);
+  } else if(data.phase==='phase2'){
+    showScreen('s-lobby');renderMyRoleBanner();
+    setTimeout(()=>initP2(data.timeA,data.timeB,data.wordsA,data.wordsB),80);
+  } else if(data.phase==='phase3'){
+    showScreen('s-lobby');renderMyRoleBanner();
+    setTimeout(()=>initP3(),80);
   }
 });
-
-// Reconexion automatica cuando socket.io reconecta
-socket.on('connect',()=>{
-  if(myId && myName) socket.emit('join',{name:myName,isModerator:isMod});
-});
-
-// Cargar sesion previa al iniciar pagina
-(function(){
-  const s=loadSession();
-  if(s&&s.name){myName=s.name;isMod=s.isMod||false;myRole=s.role;myRoleLabel=s.roleLabel;myTeam=s.team;myColor=s.color||'#ddd';myTextColor=s.textColor||'#333';myInitials=s.initials||s.name.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);}
-})();
 
 function showRoleScreen(role,roleLabel,team,color,textColor){
   document.getElementById('role-player-name').textContent=myName;
   const card=document.getElementById('role-card');card.style.background=color+'22';card.style.border='1.5px solid '+color+'88';
-  const tag=document.getElementById('role-type-tag');tag.textContent=ROLE_TYPE[role]||'Actor';tag.style.background='#f5ede0';tag.style.color='#7a4a1a';
+  const tag=document.getElementById('role-type-tag');tag.textContent=ROLE_TYPE[role]||'';tag.style.background='#f5ede0';tag.style.color='#7a4a1a';
   const title=document.getElementById('role-title');title.textContent=roleLabel;title.style.color=textColor;
   document.getElementById('role-desc').textContent=ROLE_DESCS[role]||'';
   const badge=document.getElementById('role-team-badge');badge.textContent='Equipo '+team;badge.style.background=color+'33';badge.style.color=textColor;
