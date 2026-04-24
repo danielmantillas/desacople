@@ -329,9 +329,9 @@ io.on('connection', socket => {
       saveGs();
       console.log('[RESET] Nueva sesion iniciada por moderador');
     } else {
-      // Jugadores no pueden entrar sin moderador activo
-      const hasMod = Object.values(gs.players).some(p=>p.isModerator);
-      if (!hasMod) { socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que el moderador abra la sala.'}); return; }
+      // Jugadores no pueden entrar sin moderador activo en esta sesion
+      const hasMod = gs.moderatorId && gs.players[gs.moderatorId]?.isModerator;
+      if (!hasMod) { socket.emit('joinError',{msg:'Aun no hay moderador. Espera a que el moderador abra la sala.'}); return; }
     }
 
     // Bloquear nuevos si juego activo
@@ -475,7 +475,11 @@ io.on('connection', socket => {
   socket.on('reset', () => {
     if(socket.id!==gs.moderatorId) return;
     [gs.phase1.timerA,gs.phase1.timerB,gs.phase3.timerA,gs.phase3.timerB].forEach(t=>{if(t)clearTimeout(t);});
-    gs=makeState(); saveGs(); io.emit('reset');
+    const newState = makeState();
+    newState.moderatorId = socket.id; // Keep moderator active after reset
+    newState.players[socket.id] = gs.players[socket.id]; // Keep mod player
+    gs = newState;
+    saveGs(); io.emit('reset');
   });
 
   socket.on('disconnect', () => {
