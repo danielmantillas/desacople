@@ -208,6 +208,7 @@ setInterval(() => {
         io.to('team'+(data.team==='A'?'B':'A')).emit('p1:rivalProgress',{team:data.team,count:data.wordNum});
       }
       else if (event==='p1:hint') io.to(data.toId).emit('p1:hint',data);
+      else if (event==='reset') io.emit('reset');
     });
   } catch(e){}
 }, 200);
@@ -267,7 +268,7 @@ function startTurn(team) {
   if(turn.mime)    io.to(turn.mime).emit('p1:yourTurn',{role:'mime',word,hints:wd.h});
   if(turn.guesser) io.to(turn.guesser).emit('p1:yourTurn',{role:'guesser'});
   io.to('moderator').emit('p1:modUpdate',{team,word,idx,mimeName:gs.players[turn.mime]?.name,guesserName:gs.players[turn.guesser]?.name,scores:gs.scores});
-  diskSave();
+  diskSaveSync(); // SYNC: evitar race con el polling
   p1[tk]=setTimeout(()=>doPass(team,'timeout'),TURN_MS);
 }
 
@@ -282,7 +283,10 @@ function doPass(team, src) {
     const next=(cur+i)%words.length;
     if(!guessed.includes(words[next])){if(team==='A')p1.idxA=next;else p1.idxB=next;break;}
   }
-  nextTurn(team); startTurn(team);
+  nextTurn(team);
+  // Guardar ANTES de startTurn para que el polling no sobreescriba el nuevo turno
+  diskSaveSync();
+  startTurn(team);
   io.emit('scores',gs.scores);
 }
 
@@ -570,8 +574,11 @@ io.on('connection', socket => {
     [gs.p1.timerA,gs.p1.timerB,gs.p3.timerA,gs.p3.timerB].forEach(t=>{if(t)clearTimeout(t);});
     gs=makeState(); gs.modActive=true;
     diskSaveSync();
-    try{fs.writeFileSync(STATE_FILE+'.reset',String(Date.now()));}catch(e){}
-    try{fs.writeFileSync(EVT_FILE,'[]');}catch(e){}
+    // Propagar reset a otros procesos via evento
+    try{
+      const resetEvt=[{event:'reset',data:{},ts:Date.now(),pid:process.pid}];
+      fs.writeFileSync(EVT_FILE,JSON.stringify(resetEvt));
+    }catch(e){}
     io.emit('reset'); console.log('[RESET]');
   });
 
