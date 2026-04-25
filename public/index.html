@@ -276,7 +276,7 @@ textarea{resize:none;line-height:1.5;}
         <div class="divider"><div class="div-line"></div><span class="div-text">¿eres el moderador?</span><div class="div-line"></div></div>
         <a class="link" onclick="switchView('mod')">Acceder como moderador →</a>
       </div>
-      <div id="vm" style="display:none;">
+      <div id="vm" style="display:none;margin-top:4px;">
         <input type="password" id="mod-pass" placeholder="Contraseña de moderador" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:15px;border:1.5px solid #ddd;border-radius:10px;font-family:inherit;margin-bottom:12px;outline:none;">
         <button class="btn btn-dark" onclick="joinGame(true)">Entrar como moderador →</button>
         <div class="divider"><div class="div-line"></div><div class="div-line"></div></div>
@@ -449,12 +449,12 @@ textarea{resize:none;line-height:1.5;}
 
 <script>
 const socket=io({transports:['polling'],reconnection:true,reconnectionDelay:2000});
-socket.on('connect_error',e=>console.error('[socket]',e.message));
+socket.on('connect_error',e=>console.warn('[socket]',e.message));
 let myId=null,myName='',myRole=null,myRoleLabel='',myTeam=null,myColor='#ddd',myTextColor='#333',myInitials='',isMod=false;
-let gs={},p1Timer=null,p1Time=60,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
+let gs={},p1Timer=null,p1Time=30,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
 let emojiStr='',selNext=null,dashData=null,subRevealed=false;
 
-function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);const mf=document.getElementById('mod-float');if(mf){const g=['s-p1','s-p2','s-p3','s-p1fin','s-p2fin','s-p3fin','s-dash'];mf.classList.toggle('hidden',!(isMod&&g.includes(id)));}}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);const mf=document.getElementById('mod-float');if(mf){const gscr=['s-p1','s-p2','s-p3','s-p1fin','s-p2fin','s-p3fin','s-dash'];mf.classList.toggle('hidden',!(isMod&&gscr.includes(id)));}}
 function notif(msg,d=3000){const n=document.createElement('div');n.className='notif';n.textContent=msg;document.body.appendChild(n);setTimeout(()=>n.remove(),d);}
 function fmt(s){return Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60;}
 function mkAv(ini,bg,tc,sz=24){const d=document.createElement('div');d.style.cssText='background:'+bg+';color:'+tc+';width:'+sz+'px;height:'+sz+'px;font-size:'+Math.floor(sz*.38)+'px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;';d.textContent=ini;return d;}
@@ -565,12 +565,13 @@ function initP1(){
 }
 
 function renderProgs(dA,dB,sA,sB){
-  const myD=myTeam==='A'?dA:dB,otD=myTeam==='A'?dB:dA,myS=myTeam==='A'?sA:sB,otS=myTeam==='A'?sB:sA;
+  const myD=myTeam==='A'?dA:dB, otD=myTeam==='A'?dB:dA;
+  const myS=myTeam==='A'?sA:sB, otS=myTeam==='A'?sB:sA;
   const pm=document.getElementById('prog-my');
-  if(pm){pm.innerHTML='';pm.style.cssText='display:flex;flex-direction:row;gap:3px;align-items:center;';
+  if(pm){pm.innerHTML='';pm.style.cssText='display:flex;flex-direction:row;gap:3px;';
     for(let i=0;i<6;i++)pm.appendChild(makePd(i,i<myD?'done':i===myD?'cur':''));}
   const po=document.getElementById('prog-other');
-  if(po){po.innerHTML='';po.style.cssText='display:flex;flex-direction:row;gap:3px;align-items:center;';
+  if(po){po.innerHTML='';po.style.cssText='display:flex;flex-direction:row;gap:3px;';
     for(let i=0;i<6;i++)po.appendChild(makePd(i,i<otD?'done':i===otD?'cur':''));}
   const ps=document.getElementById('p1-score');if(ps)ps.textContent=myS+' pts';
   const op=document.getElementById('other-pts'),ol=document.getElementById('other-lbl');
@@ -580,6 +581,7 @@ function renderProgs(dA,dB,sA,sB){
     else{op.style.color='#1a1a1a';ol.textContent='puntos · empate';ol.style.color='#888';}}
 }
 
+let _lastTurnKey='';
 socket.on('p1:turnUpdate',({team,turn,wordIndex,scores,passes})=>{
   gs.scores=scores; updateScores(scores);
   if(team===myTeam){
@@ -588,7 +590,6 @@ socket.on('p1:turnUpdate',({team,turn,wordIndex,scores,passes})=>{
     const mp=gs.players?.[turn.mime],gp=gs.players?.[turn.guesser];
     const tt=document.getElementById('p1-turn-txt');if(tt)tt.textContent=(mp?mp.name:'?')+' mima · '+(gp?gp.name:'?')+' adivina';
     renderQueue(turn);
-    // Renderizar rol — mime/guesser esperan p1:yourTurn para la palabra y timer
     if(turn.mime===myId){if(!p1Timer)renderP1Zone('mime');}
     else if(turn.guesser===myId){if(!p1Timer)renderP1Zone('guess');}
     else{stopP1Timer();renderP1Zone('obs');}
@@ -598,11 +599,11 @@ socket.on('p1:turnUpdate',({team,turn,wordIndex,scores,passes})=>{
   }
 });
 
-socket.on('p1:yourTurn',({role,word,hints})=>{if(role==='mime'){renderP1Zone('mime',word,hints);startP1TimerIfNew(word);}else{renderP1Zone('guess');startP1TimerIfNew(word||'guess');}});
+socket.on('p1:yourTurn',({role,word,hints})=>{if(role==='mime'){renderP1Zone('mime',word,hints);startP1TimerIfNew(word);}else{renderP1Zone('guess');startP1TimerIfNew(word||'__guess__');}});
 socket.on('p1:emoji',({from,fromName,emoji,team})=>{if(team!==myTeam)return;addChat({color:gs.players?.[from]?.color||'#ddd',tc:gs.players?.[from]?.textColor||'#333',ini:gs.players?.[from]?.initials||'?',tag:'pista',tc2:'rtm',content:'<div class="eb">'+emoji+'</div>'});});
 socket.on('p1:guessResult',({from,guess,correct,team})=>{if(team!==myTeam)return;addChat({color:gs.players?.[from]?.color||'#ddd',tc:gs.players?.[from]?.textColor||'#333',ini:gs.players?.[from]?.initials||'?',tag:'intento',tc2:'rtg',content:correct?'<span class="gok">¡'+guess+'! ✓</span>':'<span class="gtry">'+guess+'</span>'});});
 socket.on('p1:wordGuessed',({team,wordNum,by,scores})=>{
-  gs.scores=scores; updateScores(scores);
+  gs.scores=scores;updateScores(scores);
   if(team===myTeam){gs._myIdx=wordNum;addChat({sys:true,content:'Palabra '+wordNum+' adivinada por <b>'+by+'</b> ✓'});renderProgs(wordNum,gs._rivalIdx||0,scores.A,scores.B);}
   else{gs._rivalIdx=wordNum;renderProgs(gs._myIdx||0,wordNum,scores.A,scores.B);}
 });
@@ -610,34 +611,26 @@ socket.on('p1:rivalProgress',({team,count})=>{
   if(team===myTeam){gs._myIdx=count;renderProgs(count,gs._rivalIdx||0,gs.scores?.A||0,gs.scores?.B||0);}
   else{gs._rivalIdx=count;renderProgs(gs._myIdx||0,count,gs.scores?.A||0,gs.scores?.B||0);}
 });
-socket.on('p1:rivalDone',({team,scores})=>{
-  gs.scores=scores;updateScores(scores);
-  if(team!==myTeam)notif('⚡ El equipo rival terminó la Fase 1',5000);
-});
-socket.on('p1:teamDone',({team,scores,words})=>{
-  gs.scores=scores;updateScores(scores);
-  if(team===myTeam)notif('🎉 ¡Tu equipo terminó la Fase 1!',5000);
-});
-socket.on('p1:modUpdate',({team,word,mimeName,guesserName,scores})=>{
-  if(!isMod)return; gs.scores=scores; updateScores(scores);
-  notif('Eq.'+team+': '+mimeName+' → '+guesserName+' | "'+word+'"',3000);
-});
+socket.on('p1:rivalDone',({team,scores})=>{gs.scores=scores;updateScores(scores);if(team!==myTeam)notif('⚡ El equipo rival terminó la Fase 1',5000);});
+socket.on('p1:teamDone',({team,scores})=>{gs.scores=scores;updateScores(scores);if(team===myTeam)notif('🎉 ¡Tu equipo terminó la Fase 1!',5000);});
+socket.on('p1:modUpdate',({team,word,mimeName,guesserName,scores})=>{if(!isMod)return;gs.scores=scores;updateScores(scores);notif('Eq.'+team+': '+mimeName+'→'+guesserName+' "'+word+'"',3000);});
 socket.on('p1:wordRevealed',({word,index})=>{const list=document.getElementById('p1-uni-words');if(!list)return;const items=list.querySelectorAll('span');if(items[index]){items[index].textContent=word;items[index].className='uni-w';}});
 socket.on('p1:hint',({hint,idx})=>{const el=document.getElementById('hint-disp');if(el){el.textContent='💡 '+hint;el.className='hint-txt';el.style.display='inline-block';}for(let i=0;i<=idx;i++){const b=document.getElementById('hb'+i);if(b)b.disabled=true;}});
 
 socket.on('scores',s=>{gs.scores=s;updateScores(s);});
 
-function updateScores(s){const myS=myTeam==='A'?s.A:s.B;['p1-score','p2-score','p3-score'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=myS+' pts';});}
-let _p1TurnKey='';
+function updateScores(s){if(!s||!myTeam)return;const myS=myTeam==='A'?s.A:s.B;['p1-score','p2-score','p3-score'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=myS+' pts';});}
+let _timerWord='';
 function startP1TimerIfNew(key){
-  if(_p1TurnKey===key&&p1Timer)return; // Ya corriendo para este turno
-  _p1TurnKey=key;
-  p1Time=60;if(p1Timer)clearInterval(p1Timer);
-  updP1Timer();p1Timer=setInterval(()=>{p1Time--;updP1Timer();if(p1Time<=0)stopP1Timer();},1000);
+  if(_timerWord===key&&p1Timer)return;
+  _timerWord=key; p1Time=30;
+  if(p1Timer)clearInterval(p1Timer);
+  updP1Timer();
+  p1Timer=setInterval(()=>{p1Time--;updP1Timer();if(p1Time<=0)stopP1Timer();},1000);
 }
-function startP1Timer(){startP1TimerIfNew('manual_'+Date.now());}
-function stopP1Timer(){if(p1Timer){clearInterval(p1Timer);p1Timer=null;}_p1TurnKey='';}
-function updP1Timer(){const el=document.getElementById('p1-timer'),bar=document.getElementById('p1-tbar');el.textContent='0:'+(p1Time<10?'0':'')+p1Time;el.className='timer-b '+(p1Time<=10?'thot':'tok');if(bar)bar.style.width=(p1Time/60*100)+'%';}
+function startP1Timer(){startP1TimerIfNew('__manual__'+Date.now());}
+function stopP1Timer(){if(p1Timer){clearInterval(p1Timer);p1Timer=null;}_timerWord='';}
+function updP1Timer(){const el=document.getElementById('p1-timer'),bar=document.getElementById('p1-tbar');el.textContent='0:'+(p1Time<10?'0':'')+p1Time;el.className='timer-b '+(p1Time<=10?'thot':'tok');if(bar)bar.style.width=(p1Time/30*100)+'%';}
 
 function addChat({color,tc,ini,tag,tc2,content,sys}){
   const chat=document.getElementById('p1-chat');if(!chat)return;
@@ -853,11 +846,10 @@ function revealSub(){
 }
 
 socket.on('reset',()=>{
-  try{sessionStorage.clear();}catch(e){}
   if(!isMod){
     const ov=document.createElement('div');
     ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;display:flex;align-items:center;justify-content:center;';
-    ov.innerHTML='<div style="text-align:center;color:white;"><div style="font-size:44px;margin-bottom:14px;">🏁</div><div style="font-size:20px;font-weight:700;margin-bottom:8px;">El juego ha terminado</div><div style="font-size:13px;color:#aaa;">Redirigiendo al inicio...</div></div>';
+    ov.innerHTML='<div style="text-align:center;color:white;"><div style="font-size:44px;margin-bottom:14px;">🏁</div><div style="font-size:20px;font-weight:700;margin-bottom:8px;">El juego ha terminado</div><div style="font-size:13px;color:#aaa;">Redirigiendo...</div></div>';
     document.body.appendChild(ov);
     setTimeout(()=>location.reload(),2500);
   } else location.reload();
