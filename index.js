@@ -50,7 +50,7 @@ setInterval(() => {
         if (p.name === d.guesserName) sock.emit('p1:yourTurn', { role: 'guesser' });
       }
       const rivalTeam = d.team === 'A' ? 'B' : 'A';
-      io.to('team'+rivalTeam).emit('p1:rivalProgress', { team: d.team, count: d.wordIndex });
+      io.to('team'+rivalTeam).emit('p1:rivalProgress', { team: d.team, count: d.wordIndex, scores: d.scores });
     } catch(e) {}
   });
 
@@ -535,7 +535,7 @@ io.on('connection', socket => {
         guessed.push(word);
         const wgData = { team, wordNum: guessed.length, by: p.name, scores: gs.scores };
         io.to('team'+team).emit('p1:wordGuessed', wgData);
-        io.to('team'+(team === 'A' ? 'B' : 'A')).emit('p1:rivalProgress', { team, count: guessed.length });
+        io.to('team'+(team === 'A' ? 'B' : 'A')).emit('p1:rivalProgress', { team, count: guessed.length, scores: gs.scores });
         io.to('moderator').emit('p1:wordGuessed', { ...wgData, word });
         if (guessed.length >= 6) { finishP1Team(team); return; }
         const words = team === 'A' ? p1.wordsA : p1.wordsB;
