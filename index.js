@@ -325,7 +325,7 @@ io.on('connection', socket => {
       // ── JUGADOR: RECONEXIÓN ───────────────────────────────────────────────
       const prev = Object.entries(gs.players)
         .find(([,p]) => p.name===nm && !p.isModerator);
-      if (prev && (gs.modActive || modFlagActive())) {
+      if (prev && gs.modActive) {  // solo reconectar si este proceso tiene sesión activa
         const [oid, op] = prev;
         gs.players[socket.id] = {...op, id:socket.id};
         delete gs.players[oid];
