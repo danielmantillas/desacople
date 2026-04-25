@@ -2,6 +2,10 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const fs = require('fs');
+const MOD_FLAG = '/tmp/dscp_mod_active';
+const isModActive = () => { try { return fs.existsSync(MOD_FLAG) && (Date.now()-parseInt(fs.readFileSync(MOD_FLAG,'utf8')))<7200000; } catch(e){ return false; } };
+const setModActive = (v) => { try { if(v) fs.writeFileSync(MOD_FLAG,String(Date.now())); else fs.unlinkSync(MOD_FLAG); } catch(e){} };
 
 const MOD_PASSWORD = 'desacople2025';
 const TURN_MS = 60000; // 60 segundos por turno
@@ -252,6 +256,7 @@ io.on('connection', socket => {
         if (isModerator) {
           socket.join('moderator');
           gs.modActive = true;
+          setModActive(true);
           socket.emit('joined', {id:socket.id, isModerator:true, isNew:false});
         } else {
           socket.join('team'+p.team);
@@ -283,9 +288,10 @@ io.on('connection', socket => {
         if (password !== MOD_PASSWORD) { socket.emit('joinError', {msg:'Contraseña incorrecta.'}); return; }
         gs = makeState();
         gs.modActive = true;
+        setModActive(true);
         console.log('[MOD] Nueva sesión:', trimName);
       } else {
-        if (!gs.modActive) { socket.emit('joinError', {msg:'Aún no hay moderador. Espera a que abra la sala.'}); return; }
+        if (!isModActive()) { socket.emit('joinError', {msg:'Aún no hay moderador. Espera a que abra la sala.'}); return; }
         if (gs.phase !== 'lobby') { socket.emit('joinError', {msg:'El juego ya inició.'}); return; }
         const taken = Object.values(gs.players).some(p=>p.name===trimName&&!p.isModerator);
         if (taken) { socket.emit('joinError', {msg:'Ese nombre ya está en uso.'}); return; }
@@ -461,6 +467,7 @@ io.on('connection', socket => {
     [gs.phase1.timerA, gs.phase1.timerB, gs.phase3.timerA, gs.phase3.timerB].forEach(t => { if(t) clearTimeout(t); });
     gs = makeState();
     gs.modActive = true;
+    setModActive(true);
     io.emit('reset');
     console.log('[RESET] Juego reiniciado');
   });
@@ -473,7 +480,7 @@ io.on('connection', socket => {
       delete gs.players[sid];
       gs.teamA = gs.teamA.filter(id=>id!==sid);
       gs.teamB = gs.teamB.filter(id=>id!==sid);
-      if (wasmod) { gs.modActive = false; console.log('[MOD] Moderador desconectado'); }
+      if (wasmod) { gs.modActive = false; setModActive(false); console.log('[MOD] Moderador desconectado'); }
       io.emit('lobbyUpdate', publicState());
     }, 5000);
   });
