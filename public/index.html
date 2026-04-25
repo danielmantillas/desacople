@@ -490,14 +490,9 @@ function goToLobby(){showScreen('s-lobby');renderMyRoleBanner();}
 
 socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor,isNew})=>{
   myId=id;
-  isMod=isModerator; // asegurar sincronía
   if(!isModerator){myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;}
   document.getElementById('lobby-url').textContent=window.location.host;
-  if(isModerator){
-    document.getElementById('mod-bar').classList.remove('hidden');
-    document.getElementById('wait-bar').classList.add('hidden');
-    showScreen('s-lobby'); // mostrar lobby inmediatamente
-  }
+  if(isModerator){document.getElementById('mod-bar').classList.remove('hidden');document.getElementById('wait-bar').classList.add('hidden');}
   window._joinIsNew=isNew;
 });
 
