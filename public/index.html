@@ -611,12 +611,14 @@ socket.on('p1:wordGuessed',({team,wordNum,by,scores})=>{
   if(team===myTeam){gs._myIdx=wordNum;addChat({sys:true,content:'Palabra '+wordNum+' adivinada por <b>'+by+'</b> ✓'});renderProgs(wordNum,gs._rivalIdx||0,scores.A,scores.B);}
   else{gs._rivalIdx=wordNum;renderProgs(gs._myIdx||0,wordNum,scores.A,scores.B);}
 });
-socket.on('p1:rivalProgress',({team,count})=>{
-  if(team===myTeam){gs._myIdx=count;renderProgs(count,gs._rivalIdx||0,gs.scores?.A||0,gs.scores?.B||0);}
-  else{gs._rivalIdx=count;renderProgs(gs._myIdx||0,count,gs.scores?.A||0,gs.scores?.B||0);}
+socket.on('p1:rivalProgress',({team,count,scores})=>{
+  if(scores)gs.scores=scores;
+  const sA=gs.scores?.A||0, sB=gs.scores?.B||0;
+  if(team===myTeam){gs._myIdx=count;renderProgs(count,gs._rivalIdx||0,sA,sB);}
+  else{gs._rivalIdx=count;renderProgs(gs._myIdx||0,count,sA,sB);}
 });
 socket.on('p1:rivalDone',({team,scores})=>{gs.scores=scores;updateScores(scores);if(team!==myTeam)notif('⚡ El equipo rival terminó la Fase 1',5000);});
-socket.on('p1:teamDone',({team,scores})=>{gs.scores=scores;updateScores(scores);if(team===myTeam)notif('🎉 ¡Tu equipo terminó la Fase 1!',5000);});
+socket.on('p1:teamDone',({team,scores})=>{gs.scores=scores;updateScores(scores);if(team===myTeam)showP1Fin(scores);});
 socket.on('p1:modUpdate',({team,word,mimeName,guesserName,scores})=>{if(!isMod)return;gs.scores=scores;updateScores(scores);notif('Eq.'+team+': '+mimeName+'→'+guesserName+' "'+word+'"',3000);});
 socket.on('p1:wordRevealed',({word,index})=>{const list=document.getElementById('p1-uni-words');if(!list)return;const items=list.querySelectorAll('span');if(items[index]){items[index].textContent=word;items[index].className='uni-w';}});
 socket.on('p1:hint',({hint,idx})=>{const el=document.getElementById('hint-disp');if(el){el.textContent='💡 '+hint;el.className='hint-txt';el.style.display='inline-block';}for(let i=0;i<=idx;i++){const b=document.getElementById('hb'+i);if(b)b.disabled=true;}});
