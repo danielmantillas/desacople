@@ -367,9 +367,14 @@ io.on('connection', socket => {
       if (isModerator) {
         if(password!==MOD_PASSWORD){socket.emit('joinError',{msg:'Contraseña incorrecta.'});return;}
         gs=makeState(); gs.modActive=true;
-        diskSave();
+        if(_saveTimer){clearTimeout(_saveTimer);_saveTimer=null;}
+        try{const d=JSON.stringify(gs);fs.writeFileSync(STATE_FILE,d);lastHash=d;}catch(e){}
       } else {
-        if(!gs.modActive){socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que abra la sala.'});return;}
+        if(!gs.modActive){
+          const fresh=diskLoad();
+          if(fresh&&fresh.modActive&&fresh.phase==='lobby'){gs=fresh;}
+          else{socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que abra la sala.'});return;}
+        }
         if(gs.phase!=='lobby'){socket.emit('joinError',{msg:'El juego ya inició.'});return;}
         if(Object.values(gs.players).some(p=>p.name===nm&&!p.isModerator)){socket.emit('joinError',{msg:'Ese nombre ya está en uso.'});return;}
       }
