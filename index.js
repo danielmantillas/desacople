@@ -39,6 +39,32 @@ function saveLobbyAsync() {
   fs.writeFile(LOBBY_FILE, d, ()=>{});
 }
 setInterval(() => {
+  // Detectar señal de inicio de fase de otro proceso
+  fs.readFile(LOBBY_FILE+'.phase', 'utf8', (err, raw) => {
+    if (err || !raw) return;
+    fs.unlink(LOBBY_FILE+'.phase', ()=>{});
+    try {
+      const d = JSON.parse(raw);
+      if (!d || d.phase !== 'phase1') return;
+      gs.players = d.players; gs.teamA = d.teamA; gs.teamB = d.teamB;
+      gs.scores = d.scores; gs.phase = 'phase1'; gs.p1 = d.p1;
+      gs.modActive = true;
+      io.emit('phaseChange', {phase:'phase1', state:pubState()});
+      setTimeout(() => {
+        ['A','B'].forEach(team => {
+          const turn = team==='A'?gs.p1.turnA:gs.p1.turnB;
+          const idx  = team==='A'?gs.p1.idxA:gs.p1.idxB;
+          const word = (team==='A'?gs.p1.wordsA:gs.p1.wordsB)[idx];
+          if (!word) return;
+          io.to('team'+team).emit('p1:turnUpdate',{team,turn,wordIndex:0,scores:gs.scores,passes:0});
+          for (const [sid,sock] of io.sockets.sockets) {
+            if (sid===turn.mime)    sock.emit('p1:yourTurn',{role:'mime',word,hints:wFind(word).h});
+            if (sid===turn.guesser) sock.emit('p1:yourTurn',{role:'guesser'});
+          }
+        });
+      }, 500);
+    } catch(e){}
+  });
   if (gs.phase !== 'lobby') return;
   fs.readFile(LOBBY_FILE, 'utf8', (err, raw) => {
     if (err || !raw) return;
