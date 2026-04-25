@@ -118,7 +118,21 @@ setInterval(() => {
 }, 200);
 
 // ── POLLING: sincronizar estado entre procesos ─────────────────────────────────
-let lastHash = (()=>{try{return fs.existsSync(STATE_FILE)?fs.readFileSync(STATE_FILE,'utf8'):'';}catch(e){return '';}})();
+let lastHash = (()=>{
+  try {
+    if (!fs.existsSync(STATE_FILE)) return '';
+    const raw = fs.readFileSync(STATE_FILE, 'utf8');
+    const d = JSON.parse(raw);
+    // Si el estado guardado NO es un lobby activo, borrarlo para empezar limpio
+    if (!d || !d.modActive || d.phase !== 'lobby') {
+      try { fs.unlinkSync(STATE_FILE); } catch(e) {}
+      console.log('[INIT] Estado viejo descartado, empezando limpio');
+      return '';
+    }
+    console.log('[INIT] Estado de lobby activo encontrado, cargando...');
+    return raw;
+  } catch(e) { return ''; }
+})();
 setInterval(() => {
   try {
     if (!fs.existsSync(STATE_FILE)) return;
