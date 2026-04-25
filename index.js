@@ -7,7 +7,7 @@ const fs       = require('fs');
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const MOD_PASSWORD = 'desacople2025';
-const TURN_MS      = 60000;
+const TURN_MS      = 30000;
 const STATE_FILE   = '/tmp/dscp_state.json';
 const EVT_FILE     = '/tmp/dscp_events.json';
 const HB_FILE      = '/tmp/dscp_hb';
@@ -186,7 +186,8 @@ function syncTurns() {
     const turn=team==='A'?gs.p1.turnA:gs.p1.turnB, idx=team==='A'?gs.p1.idxA:gs.p1.idxB;
     const words=team==='A'?gs.p1.wordsA:gs.p1.wordsB, passes=team==='A'?gs.p1.passesA:gs.p1.passesB;
     if (!turn||!words.length) return;
-    io.to('team'+team).emit('p1:turnUpdate', { team, turn, wordIndex:idx, scores:gs.scores, passes });
+    const gCount=(team==='A'?gs.p1.guessedA:gs.p1.guessedB).length;
+    io.to('team'+team).emit('p1:turnUpdate', { team, turn, wordIndex:gCount, scores:gs.scores, passes });
     // Enviar p1:yourTurn a sockets locales (cross-proceso)
     // El cliente usa dedup por palabra para no reiniciar timer si ya corre
     const word=words[idx], wd=wFind(word);
@@ -269,7 +270,8 @@ function startTurn(team) {
   const passes=team==='A'?p1.passesA:p1.passesB;
   const word=words[idx]; const wd=wFind(word);
   console.log(`[T${team}] ${gs.players[turn.mime]?.name}→${gs.players[turn.guesser]?.name} "${word}"`);
-  io.to('team'+team).emit('p1:turnUpdate',{team,turn,wordIndex:idx,scores:gs.scores,passes});
+  const guessedCount=(team==='A'?p1.guessedA:p1.guessedB).length;
+  io.to('team'+team).emit('p1:turnUpdate',{team,turn,wordIndex:guessedCount,scores:gs.scores,passes});
   if(turn.mime)    io.to(turn.mime).emit('p1:yourTurn',{role:'mime',word,hints:wd.h});
   if(turn.guesser) io.to(turn.guesser).emit('p1:yourTurn',{role:'guesser'});
   io.to('moderator').emit('p1:modUpdate',{team,word,idx,mimeName:gs.players[turn.mime]?.name,guesserName:gs.players[turn.guesser]?.name,scores:gs.scores});
@@ -281,12 +283,16 @@ function doPass(team, src) {
   const p1=gs.p1, tk=team==='A'?'timerA':'timerB';
   if(p1[tk]){clearTimeout(p1[tk]);p1[tk]=null;}
   if(src!=='timeout'){gs.scores[team]-=3;if(team==='A')p1.passesA++;else p1.passesB++;}
-  // Avanzar a la siguiente palabra NO adivinada
-  const words=team==='A'?p1.wordsA:p1.wordsB, guessed=team==='A'?p1.guessedA:p1.guessedB;
-  let cur=team==='A'?p1.idxA:p1.idxB;
-  for(let i=1;i<=words.length;i++){
-    const next=(cur+i)%words.length;
-    if(!guessed.includes(words[next])){if(team==='A')p1.idxA=next;else p1.idxB=next;break;}
+  // Avanzar a la siguiente palabra NO adivinada aún
+  const _words=team==='A'?p1.wordsA:p1.wordsB;
+  const _guessed=team==='A'?p1.guessedA:p1.guessedB;
+  let _cur=team==='A'?p1.idxA:p1.idxB;
+  for(let i=1;i<=_words.length;i++){
+    const _next=(_cur+i)%_words.length;
+    if(!_guessed.includes(_words[_next])){
+      if(team==='A')p1.idxA=_next; else p1.idxB=_next;
+      break;
+    }
   }
   nextTurn(team);
   // Guardar ANTES de startTurn para que el polling no sobreescriba el nuevo turno
@@ -481,8 +487,16 @@ io.on('connection', socket => {
         io.to('team'+(team==='A'?'B':'A')).emit('p1:rivalProgress',{team,count:idx+1});
         io.to('moderator').emit('p1:wordGuessed',{...wgData,word});
         evtPush('p1:wordGuessed',wgData);
-        if(team==='A'){p1.guessedA.push(word);p1.idxA++;if(p1.idxA>=6){finishP1Team('A');return;}}
-        else{p1.guessedB.push(word);p1.idxB++;if(p1.idxB>=6){finishP1Team('B');return;}}
+        if(team==='A'){
+          p1.guessedA.push(word);
+          if(p1.guessedA.length>=6){finishP1Team('A');return;}
+          // Avanzar al siguiente no adivinado
+          for(let i=1;i<=p1.wordsA.length;i++){const n=(p1.idxA+i)%p1.wordsA.length;if(!p1.guessedA.includes(p1.wordsA[n])){p1.idxA=n;break;}}
+        } else {
+          p1.guessedB.push(word);
+          if(p1.guessedB.length>=6){finishP1Team('B');return;}
+          for(let i=1;i<=p1.wordsB.length;i++){const n=(p1.idxB+i)%p1.wordsB.length;if(!p1.guessedB.includes(p1.wordsB[n])){p1.idxB=n;break;}}
+        }
         nextTurn(team);startTurn(team);
       }
     }catch(e){console.error('[GUESS]',e.message);}
