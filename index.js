@@ -58,6 +58,8 @@ setInterval(() => {
   fs.readFile(RESET_FLAG, (err) => {
     if (err) return;
     fs.unlink(RESET_FLAG, () => {});
+    [gs.p1?.timerA,gs.p1?.timerB,gs.p3?.timerA,gs.p3?.timerB].forEach(t=>{if(t)clearTimeout(t);});
+    gs = makeState(); gs.modActive = true; // limpiar estado en este proceso
     io.emit('reset');
   });
 
