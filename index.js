@@ -33,12 +33,16 @@ function diskSave() {
   }, 50);
 }
 function diskSaveSync() {
-  if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null; }
+  // Rápido: serializar y actualizar hash AHORA (sin bloquear disco)
+  // La escritura real es async para no bloquear el event loop
   try {
     const raw = JSON.stringify(JSON.parse(JSON.stringify(gs,
       (k,v) => (k==='timerA'||k==='timerB') ? null : v)));
-    fs.writeFileSync(STATE_FILE, raw);
-    lastStateHash = raw;
+    lastStateHash = raw; // actualizar hash inmediatamente
+    if (_saveTimer) clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(() => {
+      fs.writeFile(STATE_FILE, raw, () => {});
+    }, 20);
   } catch(e) {}
 }
 function diskLoad() {
