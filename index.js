@@ -7,6 +7,18 @@ const fs = require('fs');
 const MOD_PASSWORD = 'desacople2025';
 const TURN_MS = 60000;
 const STATE_FILE = '/tmp/dscp_state.json';
+const EVT_FILE = '/tmp/dscp_events.json';
+let lastEvtHash = '';
+
+function evtSave(event, data) {
+  try {
+    let evts = [];
+    try { evts = JSON.parse(fs.readFileSync(EVT_FILE,'utf8')); } catch(e){}
+    evts = evts.filter(e=>Date.now()-e.ts<2000);
+    evts.push({event, data, ts:Date.now(), pid:process.pid});
+    fs.writeFileSync(EVT_FILE, JSON.stringify(evts));
+  } catch(e){}
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -78,6 +90,25 @@ function makeState() {
 
 let gs = makeState();
 
+// ── RELAY DE EVENTOS EN TIEMPO REAL (emoji, guessResult, hints) ─────────────
+setInterval(() => {
+  try {
+    if (!fs.existsSync(EVT_FILE)) return;
+    const raw = fs.readFileSync(EVT_FILE, 'utf8');
+    if (raw === lastEvtHash) return;
+    lastEvtHash = raw;
+    const evts = JSON.parse(raw);
+    evts.filter(e=>e.pid!==process.pid&&Date.now()-e.ts<2000).forEach(e=>{
+      const {event, data} = e;
+      if (event==='p1:emoji') io.to('team'+data.team).emit('p1:emoji', data);
+      else if (event==='p1:guessResult') io.to('team'+data.team).emit('p1:guessResult', data);
+      else if (event==='p1:hint') io.to(data.toId).emit('p1:hint', {hint:data.hint, idx:data.idx});
+      else if (event==='p1:hintUsed') io.to('team'+data.team).emit('p1:hintUsed', data);
+      else if (event==='p1:wordGuessed') { io.to('team'+data.team).emit('p1:wordGuessed', data); io.to('team'+(data.team==='A'?'B':'A')).emit('p1:rivalProgress',{team:data.team,count:data.wordNum}); }
+    });
+  } catch(e){}
+}, 200);
+
 // ── POLLING: sincronizar estado entre procesos ─────────────────────────────────
 let lastHash = '';
 setInterval(() => {
@@ -127,6 +158,7 @@ function resendTurns() {
     const word = words[idx];
     const wd = wData(word);
     io.to('team'+team).emit('p1:turnUpdate', { team, turn, wordIndex:idx, scores:gs.scores, passes });
+  io.to('team'+team).emit('p1:timerReset');
     // Solo a sockets en ESTE proceso
     for (const [sid, sock] of io.sockets.sockets) {
       if (sid === turn.mime)    sock.emit('p1:yourTurn', { role:'mime', word, hints:wd.h });
@@ -197,6 +229,9 @@ function doPass(team, src) {
   if(src!=='timeout'){
     if(team==='A'){p1.passesA++;gs.scores.A-=3;}else{p1.passesB++;gs.scores.B-=3;}
   }
+  // Avanzar la palabra al pasar (no esperar a que se adivine)
+  if(team==='A'){p1.idxA=(p1.idxA+1)%p1.wordsA.length;}
+  else{p1.idxB=(p1.idxB+1)%p1.wordsB.length;}
   nextTurn(team); startTurn(team);
   io.emit('scores',gs.scores);
 }
@@ -351,7 +386,9 @@ io.on('connection', socket => {
     const p=gs.players[socket.id]; if(!p) return;
     const turn=p.team==='A'?gs.p1.turnA:gs.p1.turnB;
     if(turn.mime!==socket.id) return;
-    io.to('team'+p.team).emit('p1:emoji',{from:socket.id,fromName:p.name,emoji,team:p.team});
+    const emData={from:socket.id,fromName:p.name,emoji,team:p.team};
+    io.to('team'+p.team).emit('p1:emoji',emData);
+    evtSave('p1:emoji',emData);
   });
 
   socket.on('p1:guess', ({guess}) => {
@@ -362,14 +399,18 @@ io.on('connection', socket => {
       const idx=team==='A'?p1.idxA:p1.idxB;
       const word=(team==='A'?p1.wordsA:p1.wordsB)[idx];
       const ok=guess.trim().toLowerCase()===word.toLowerCase();
-      io.to('team'+team).emit('p1:guessResult',{from:socket.id,fromName:p.name,guess,correct:ok,team});
+      const grData={from:socket.id,fromName:p.name,guess,correct:ok,team};
+      io.to('team'+team).emit('p1:guessResult',grData);
+      evtSave('p1:guessResult',grData);
       if(ok){
         const tk=team==='A'?'timerA':'timerB';
         if(p1[tk]){clearTimeout(p1[tk]);p1[tk]=null;}
         gs.scores[team]+=10;
         const uni=(team==='A'?gs.teamA:gs.teamB).find(id=>gs.players[id]?.role==='universidad');
         if(uni) io.to(uni).emit('p1:wordRevealed',{word,index:idx});
-        io.to('team'+team).emit('p1:wordGuessed',{team,wordNum:idx+1,by:p.name,scores:gs.scores});
+        const wgData={team,wordNum:idx+1,by:p.name,scores:gs.scores};
+        io.to('team'+team).emit('p1:wordGuessed',wgData);
+        evtSave('p1:wordGuessed',wgData);
         io.to('team'+(team==='A'?'B':'A')).emit('p1:rivalProgress',{team,count:idx+1});
         io.to('moderator').emit('p1:wordGuessed',{team,wordNum:idx+1,by:p.name,word,scores:gs.scores});
         if(team==='A'){p1.guessedA.push(word);p1.idxA++;if(p1.idxA>=6){finishP1('A');return;}}
@@ -394,6 +435,7 @@ io.on('connection', socket => {
     const wd=wData(word); if(idx>=wd.h.length) return;
     gs.scores[team]-=5;
     socket.emit('p1:hint',{hint:wd.h[idx],idx});
+    evtSave('p1:hint',{toId:socket.id,hint:wd.h[idx],idx});
     io.to('team'+team).emit('p1:hintUsed',{idx,scores:gs.scores});
     io.emit('scores',gs.scores);
   });
