@@ -336,7 +336,8 @@ io.on('connection', socket => {
       // ── Reconexión: mismo nombre ───────────────────────────────────────────
       const prev = Object.entries(gs.players)
         .find(([,p]) => p.name===nm && p.isModerator===!!isModerator);
-      if (prev) {
+      // Reconexión solo si hay sesión activa
+      if (prev && (gs.modActive || modFlagActive())) {
         const [oid, op] = prev;
         gs.players[socket.id] = {...op, id:socket.id};
         delete gs.players[oid];
@@ -389,6 +390,7 @@ io.on('connection', socket => {
         gs = makeState();
         gs.modActive = true;
         modFlagSet();
+        try { if(fs.existsSync(LOBBY_FILE)) fs.unlinkSync(LOBBY_FILE); _lastLobby=''; } catch(e){}
 
       // ── Nuevo jugador ──────────────────────────────────────────────────────
       } else {
