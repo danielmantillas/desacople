@@ -11,13 +11,16 @@ const EVT_FILE = '/tmp/dscp_events.json';
 let lastEvtHash = '';
 
 function evtSave(event, data) {
-  try {
-    let evts = [];
-    try { evts = JSON.parse(fs.readFileSync(EVT_FILE,'utf8')); } catch(e){}
-    evts = evts.filter(e=>Date.now()-e.ts<2000);
-    evts.push({event, data, ts:Date.now(), pid:process.pid});
-    fs.writeFileSync(EVT_FILE, JSON.stringify(evts));
-  } catch(e){}
+  // Non-blocking event save
+  setImmediate(() => {
+    try {
+      let evts = [];
+      try { evts = JSON.parse(fs.readFileSync(EVT_FILE,'utf8')); } catch(e){}
+      evts = evts.filter(e=>Date.now()-e.ts<2000);
+      evts.push({event, data, ts:Date.now(), pid:process.pid});
+      fs.writeFile(EVT_FILE, JSON.stringify(evts), ()=>{});
+    } catch(e){}
+  });
 }
 
 const app = express();
@@ -29,11 +32,16 @@ process.on('uncaughtException', err => console.error('[ERR]', err.message));
 process.on('unhandledRejection', r => console.error('[REJ]', String(r)));
 
 // ── DISCO ─────────────────────────────────────────────────────────────────────
+let _saveTimer = null;
 function diskSave() {
-  try {
-    const d = JSON.parse(JSON.stringify(gs, (k,v) => (k==='timerA'||k==='timerB') ? null : v));
-    fs.writeFileSync(STATE_FILE, JSON.stringify(d));
-  } catch(e) {}
+  // Debounced async save - never blocks the event loop
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    try {
+      const d = JSON.parse(JSON.stringify(gs, (k,v) => (k==='timerA'||k==='timerB') ? null : v));
+      fs.writeFile(STATE_FILE, JSON.stringify(d), ()=>{});
+    } catch(e) {}
+  }, 50);
 }
 
 function diskLoad() {
@@ -94,7 +102,7 @@ let gs = makeState();
 setInterval(() => {
   try {
     if (!fs.existsSync(EVT_FILE)) return;
-    const raw = fs.readFileSync(EVT_FILE, 'utf8');
+    let raw; try { raw = fs.readFileSync(EVT_FILE, 'utf8'); } catch(e){ return; }
     if (raw === lastEvtHash) return;
     lastEvtHash = raw;
     const evts = JSON.parse(raw);
@@ -114,7 +122,7 @@ let lastHash = '';
 setInterval(() => {
   try {
     if (!fs.existsSync(STATE_FILE)) return;
-    const raw = fs.readFileSync(STATE_FILE, 'utf8');
+    let raw; try { raw = fs.readFileSync(STATE_FILE, 'utf8'); } catch(e){ return; }
     if (raw === lastHash) return;
     lastHash = raw;
     const fresh = JSON.parse(raw);
