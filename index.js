@@ -8,7 +8,23 @@ const MOD_PASSWORD = 'desacople2025';
 const TURN_MS = 60000;
 const STATE_FILE = '/tmp/dscp_state.json';
 const EVT_FILE = '/tmp/dscp_events.json';
+const HB_FILE = '/tmp/dscp_mod_hb'; // Heartbeat: solo existe mientras el mod esta conectado
 let lastEvtHash = '';
+
+// Heartbeat helpers
+function modHeartbeat() {
+  try { fs.writeFileSync(HB_FILE, String(Date.now())); } catch(e) {}
+}
+function modHeartbeatClear() {
+  try { if(fs.existsSync(HB_FILE)) fs.unlinkSync(HB_FILE); } catch(e) {}
+}
+function isModConnected() {
+  try {
+    if (!fs.existsSync(HB_FILE)) return false;
+    const ts = parseInt(fs.readFileSync(HB_FILE, 'utf8'));
+    return (Date.now() - ts) < 90000; // 90 segundos max
+  } catch(e) { return false; }
+}
 
 function evtSave(event, data) {
   // Non-blocking event save
@@ -362,7 +378,7 @@ io.on('connection', socket => {
         gs.teamB=gs.teamB.map(id=>id===oid?socket.id:id);
         if(gs.moderatorId===oid) gs.moderatorId=socket.id;
         const p=gs.players[socket.id];
-        if(isModerator){socket.join('moderator');socket.emit('joined',{id:socket.id,isModerator:true,isNew:false});}
+        if(isModerator){socket.join('moderator');modHeartbeat();socket.emit('joined',{id:socket.id,isModerator:true,isNew:false});}
         else{socket.join('team'+p.team);socket.emit('joined',{id:socket.id,isModerator:false,isNew:false,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor});}
         // Restaurar fase
         if(gs.phase==='lobby') socket.emit('restoreState',{phase:'lobby'});
@@ -394,12 +410,18 @@ io.on('connection', socket => {
         const newState=JSON.stringify(gs);
         try{fs.writeFileSync(STATE_FILE,newState);lastHash=newState;}catch(e){}
         try{fs.writeFileSync(STATE_FILE+'.reset',String(Date.now()));}catch(e){}
+        modHeartbeat();
       } else {
-        // Verificar mod activo en memoria o disco
-        if(!gs.modActive){
+        // Verificar que el moderador esta ACTUALMENTE conectado (heartbeat)
+        const modOnline = gs.modActive || isModConnected();
+        if (!modOnline) {
+          socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que abra la sala.'});
+          return;
+        }
+        // Sync gs si es otro proceso
+        if (!gs.modActive) {
           const fresh=diskLoad();
-          if(fresh&&fresh.modActive===true&&fresh.phase==='lobby'){gs=fresh;}
-          else{socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que abra la sala.'});return;}
+          if(fresh&&fresh.phase==='lobby'){gs=fresh;}
         }
         if(gs.phase!=='lobby'){socket.emit('joinError',{msg:'El juego ya inició.'});return;}
         if(Object.values(gs.players).some(p=>p.name===nm&&!p.isModerator)){socket.emit('joinError',{msg:'Ese nombre ya está en uso.'});return;}
@@ -565,10 +587,10 @@ io.on('connection', socket => {
     [gs.p1.timerA,gs.p1.timerB,gs.p3.timerA,gs.p3.timerB].forEach(t=>{if(t)clearTimeout(t);});
     gs=makeState(); gs.modActive=true;
     if(_saveTimer){clearTimeout(_saveTimer);_saveTimer=null;}
-    // Guardar estado limpio + señal de reset para otros procesos
     const resetState = JSON.stringify(gs);
     try{fs.writeFileSync(STATE_FILE,resetState);lastHash=resetState;}catch(e){}
     try{fs.writeFileSync(STATE_FILE+'.reset',String(Date.now()));}catch(e){}
+    modHeartbeat();
     io.emit('reset');
     console.log('[RESET]');
   });
@@ -580,11 +602,14 @@ io.on('connection', socket => {
       delete gs.players[sid];
       gs.teamA=gs.teamA.filter(id=>id!==sid);
       gs.teamB=gs.teamB.filter(id=>id!==sid);
-      if(wasMod){gs.modActive=false;console.log('[MOD OFF]');}
+      if(wasMod){gs.modActive=false;modHeartbeatClear();console.log('[MOD OFF]');}
       diskSave(); io.emit('lobbyUpdate',pubState());
     },5000);
   });
 });
 
 const PORT = process.env.PORT || 3000;
+// Renovar heartbeat cada 30s si hay mod conectado en este proceso
+setInterval(()=>{ if(gs.modActive) modHeartbeat(); }, 30000);
+
 server.listen(PORT, () => console.log('[START] PID:', process.pid, 'port:', PORT));
