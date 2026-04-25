@@ -333,29 +333,32 @@ io.on('connection', socket => {
         delete gs.players[socket.id];
       }
 
-      // Moderador con contraseña siempre inicia sesión fresca
+      // ── MODERADOR ─────────────────────────────────────────────────────────
       if (isModerator) {
         if (password !== MOD_PASSWORD) {
           socket.emit('joinError', {msg:'Contraseña incorrecta.'});
           return;
         }
+        // Limpiar sesión anterior
         [gs.p1.timerA,gs.p1.timerB,gs.p3.timerA,gs.p3.timerB].forEach(t=>{if(t)clearTimeout(t);});
         gs = makeState();
         gs.modActive = true;
         modFlagSet();
         try { if(fs.existsSync(LOBBY_FILE)) fs.unlinkSync(LOBBY_FILE); _lastLobby=''; } catch(e){}
-        const ini2 = nm.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
-        gs.players[socket.id] = {id:socket.id,name:nm,initials:ini2,isModerator:true,role:null,roleLabel:null,team:null,color:'#ddd',textColor:'#333'};
+        // Registrar moderador
+        const ini = nm.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
+        gs.players[socket.id] = {id:socket.id,name:nm,initials:ini,isModerator:true,
+          role:null,roleLabel:null,team:null,color:'#ddd',textColor:'#333'};
         gs.moderatorId = socket.id;
         socket.join('moderator');
         socket.emit('joined', {id:socket.id, isModerator:true, isNew:true});
         socket.emit('restoreState', {phase:'lobby'});
         io.emit('lobbyUpdate', pubState());
-        console.log('[MOD NEW]', nm);
+        console.log('[MOD]', nm);
         return;
       }
 
-      // ── Reconexión jugador: mismo nombre ──────────────────────────────────
+      // ── JUGADOR: RECONEXIÓN ───────────────────────────────────────────────
       const prev = Object.entries(gs.players)
         .find(([,p]) => p.name===nm && !p.isModerator);
       if (prev && (gs.modActive || modFlagActive())) {
@@ -364,13 +367,12 @@ io.on('connection', socket => {
         delete gs.players[oid];
         gs.teamA = gs.teamA.map(id=>id===oid?socket.id:id);
         gs.teamB = gs.teamB.map(id=>id===oid?socket.id:id);
-        if (gs.moderatorId===oid) { gs.moderatorId=socket.id; modFlagSet(); }
         const p = gs.players[socket.id];
         socket.join('team'+p.team);
         socket.emit('joined', {id:socket.id, isModerator:false, isNew:false,
           role:p.role, roleLabel:p.roleLabel, team:p.team, color:p.color, textColor:p.textColor});
         const ph = gs.phase;
-        if      (ph==='lobby')  socket.emit('restoreState', {phase:'lobby'});
+        if (ph==='lobby') socket.emit('restoreState', {phase:'lobby'});
         else if (ph==='phase1') {
           socket.emit('restoreState', {phase:'phase1', state:pubState(), scores:gs.scores});
           setTimeout(() => {
@@ -385,8 +387,7 @@ io.on('connection', socket => {
           }, 300);
         }
         else if (ph==='phase2') socket.emit('restoreState', {phase:'phase2',
-          timeA:gs.p2.timeA, timeB:gs.p2.timeB,
-          wordsA:gs.p1.guessedA, wordsB:gs.p1.guessedB});
+          timeA:gs.p2.timeA, timeB:gs.p2.timeB, wordsA:gs.p1.guessedA, wordsB:gs.p1.guessedB});
         else if (ph==='phase3') socket.emit('restoreState', {phase:'phase3',
           state:pubState(), wordsA:gs.p3.wordsA, wordsB:gs.p3.wordsB});
         io.emit('lobbyUpdate', pubState());
@@ -394,48 +395,32 @@ io.on('connection', socket => {
         return;
       }
 
-      // ── Nuevo moderador ────────────────────────────────────────────────────
-      // ── Nuevo jugador ──────────────────────────────────────────────────────
-      if (true) {
-        // Bloquear si no hay moderador (en memoria O flag de disco)
-        const hasMod = gs.modActive || modFlagActive();
-        if (!hasMod) {
-          socket.emit('joinError', {msg:'Aún no hay moderador. Espera a que abra la sala.'});
-          return;
-        }
-        // Si este proceso no tiene la sesión activa, sincronizar modActive
-        if (!gs.modActive) gs.modActive = true;
-        if (gs.phase !== 'lobby') {
-          socket.emit('joinError', {msg:'El juego ya inició.'});
-          return;
-        }
-        if (Object.values(gs.players).some(p=>p.name===nm&&!p.isModerator)) {
-          socket.emit('joinError', {msg:'Ese nombre ya está en uso.'});
-          return;
-        }
+      // ── JUGADOR: NUEVO ────────────────────────────────────────────────────
+      if (!gs.modActive && !modFlagActive()) {
+        socket.emit('joinError', {msg:'Aún no hay moderador. Espera a que abra la sala.'});
+        return;
       }
-
-      // ── Registrar ──────────────────────────────────────────────────────────
+      if (!gs.modActive) gs.modActive = true;
+      if (gs.phase !== 'lobby') {
+        socket.emit('joinError', {msg:'El juego ya inició.'});
+        return;
+      }
+      if (Object.values(gs.players).some(p=>p.name===nm&&!p.isModerator)) {
+        socket.emit('joinError', {msg:'Ese nombre ya está en uso.'});
+        return;
+      }
       const ini = nm.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
-      gs.players[socket.id] = {
-        id:socket.id, name:nm, initials:ini, isModerator:!!isModerator,
-        role:null, roleLabel:null, team:null, color:'#ddd', textColor:'#333'
-      };
-      if (isModerator) {
-        gs.moderatorId = socket.id;
-        socket.join('moderator');
-        socket.emit('joined', {id:socket.id, isModerator:true, isNew:true});
-      } else {
-        assignTeam(socket.id);
-        const p = gs.players[socket.id];
-        socket.join('team'+p.team);
-        socket.emit('joined', {id:socket.id, isModerator:false, isNew:true,
-          role:p.role, roleLabel:p.roleLabel, team:p.team, color:p.color, textColor:p.textColor});
-      }
+      gs.players[socket.id] = {id:socket.id,name:nm,initials:ini,isModerator:false,
+        role:null,roleLabel:null,team:null,color:'#ddd',textColor:'#333'};
+      assignTeam(socket.id);
+      const p = gs.players[socket.id];
+      socket.join('team'+p.team);
+      socket.emit('joined', {id:socket.id, isModerator:false, isNew:true,
+        role:p.role, roleLabel:p.roleLabel, team:p.team, color:p.color, textColor:p.textColor});
       socket.emit('restoreState', {phase:'lobby'});
       io.emit('lobbyUpdate', pubState());
       saveLobbyAsync();
-      console.log('[NEW]', nm, gs.players[socket.id]?.team||'mod');
+      console.log('[NEW]', nm, p.team);
 
     } catch(e) { console.error('[JOIN_ERR]', e.message); }
   });
