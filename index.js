@@ -171,6 +171,13 @@ function syncTurns() {
     const words=team==='A'?gs.p1.wordsA:gs.p1.wordsB, passes=team==='A'?gs.p1.passesA:gs.p1.passesB;
     if (!turn||!words.length) return;
     io.to('team'+team).emit('p1:turnUpdate', { team, turn, wordIndex:idx, scores:gs.scores, passes });
+    // Enviar p1:yourTurn a sockets locales (cross-proceso)
+    // El cliente usa dedup por palabra para no reiniciar timer si ya corre
+    const word=words[idx], wd=wFind(word);
+    for (const [sid, sock] of io.sockets.sockets) {
+      if (sid===turn.mime)    sock.emit('p1:yourTurn',{role:'mime',    word, hints:wd.h});
+      if (sid===turn.guesser) sock.emit('p1:yourTurn',{role:'guesser', word});
+    }
   });
 }
 
