@@ -493,7 +493,11 @@ socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor,isNew})=
   isMod=!!isModerator;
   if(!isModerator){myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;}
   document.getElementById('lobby-url').textContent=window.location.host;
-  if(isModerator){document.getElementById('mod-bar').classList.remove('hidden');document.getElementById('wait-bar').classList.add('hidden');}
+  if(isModerator){
+    document.getElementById('mod-bar').classList.remove('hidden');
+    document.getElementById('wait-bar').classList.add('hidden');
+    showScreen('s-lobby'); // mostrar lobby aquí directamente
+  }
   window._joinIsNew=isNew;
 });
 
