@@ -40,17 +40,19 @@ setInterval(() => {
     if (err || !raw) return;
     try {
       const d = JSON.parse(raw);
-      if (!d || !d.team || !d.turn || Date.now() - d.ts > 5000) return;
-      // Solo retransmitir si este proceso tiene sockets de ese equipo
+      if (!d || !d.team || Date.now() - d.ts > 5000) return;
       const room = io.sockets.adapter.rooms.get('team'+d.team);
       if (!room || room.size === 0) return;
       io.to('team'+d.team).emit('p1:turnUpdate', {
         team: d.team, turn: d.turn, wordIndex: d.wordIndex,
         scores: d.scores, passes: d.passes
       });
+      // Buscar por nombre (los socket IDs pueden diferir entre procesos)
       for (const [sid, sock] of io.sockets.sockets) {
-        if (sid === d.turn.mime)    sock.emit('p1:yourTurn', { role: 'mime',    word: d.word, hints: d.hints });
-        if (sid === d.turn.guesser) sock.emit('p1:yourTurn', { role: 'guesser' });
+        const p = gs.players[sid];
+        if (!p) continue;
+        if (p.name === d.mimeName)    sock.emit('p1:yourTurn', { role: 'mime',    word: d.word, hints: d.hints });
+        if (p.name === d.guesserName) sock.emit('p1:yourTurn', { role: 'guesser' });
       }
     } catch(e) {}
   });
@@ -69,16 +71,50 @@ setInterval(() => {
     try {
       const d = JSON.parse(raw);
       if (!d || d.phase !== 'phase1') return;
-      gs.players = d.players;
-      gs.teamA   = d.teamA;
-      gs.teamB   = d.teamB;
-      gs.scores  = d.scores;
-      gs.phase   = 'phase1';
-      gs.p1      = d.p1;
+
+      // Guardar mapa nombre→socketId local ANTES de sobreescribir
+      const nameToLocal = {};
+      Object.entries(gs.players).forEach(([id, p]) => {
+        if (!p.isModerator) nameToLocal[p.name] = id;
+      });
+
+      gs.players  = d.players;
+      gs.teamA    = d.teamA;
+      gs.teamB    = d.teamB;
+      gs.scores   = d.scores;
+      gs.phase    = 'phase1';
+      gs.p1       = d.p1;
       gs.modActive = true;
+
+      // Remap: reemplazar IDs remotos con IDs locales por nombre
+      const idRemap = {};
+      Object.entries(gs.players).forEach(([remoteId, p]) => {
+        const localId = nameToLocal[p.name];
+        if (localId) idRemap[remoteId] = localId;
+      });
+      if (Object.keys(idRemap).length > 0) {
+        const np = {};
+        Object.entries(gs.players).forEach(([id, p]) => {
+          const nid = idRemap[id] || id;
+          np[nid] = { ...p, id: nid };
+        });
+        gs.players = np;
+        gs.teamA   = gs.teamA.map(id => idRemap[id] || id);
+        gs.teamB   = gs.teamB.map(id => idRemap[id] || id);
+        ['queueA','queueB'].forEach(q => {
+          if (gs.p1[q]) gs.p1[q] = gs.p1[q].map(id => idRemap[id] || id);
+        });
+        ['turnA','turnB'].forEach(t => {
+          if (gs.p1[t]) {
+            gs.p1[t].mime    = idRemap[gs.p1[t].mime]    || gs.p1[t].mime;
+            gs.p1[t].guesser = idRemap[gs.p1[t].guesser] || gs.p1[t].guesser;
+          }
+        });
+      }
+
       io.emit('phaseChange', { phase: 'phase1', state: pubState() });
       setTimeout(() => sendTurnsToLocalSockets(), 500);
-    } catch(e) {}
+    } catch(e) { console.error('[PHASE_FILE]', e.message); }
   });
 
   // 3. Lobby sync (solo durante lobby)
@@ -282,6 +318,8 @@ function startTurn(team) {
   // Señal async para otros procesos
   const _tsig = JSON.stringify({
     team, turn, word, hints: wd.h,
+    mimeName:    gs.players[turn.mime]?.name,
+    guesserName: gs.players[turn.guesser]?.name,
     wordIndex: guessed.length, scores: gs.scores, passes,
     ts: Date.now()
   });
@@ -716,7 +754,7 @@ io.on('connection', socket => {
     gs = makeState();
     gs.modActive = true;
     modFlagSet();
-    fs.writeFile(RESET_FLAG, '1', () => {}); // señal async para otros procesos
+    try { fs.writeFileSync(RESET_FLAG, '1'); } catch(e){} // sync: otros procesos lo ven de inmediato
     [LOBBY_FILE, PHASE_FILE, TURN_FILE].forEach(f => { try { fs.unlinkSync(f); } catch(e){} });
     io.emit('reset');
     console.log('[RESET]');
