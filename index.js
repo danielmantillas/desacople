@@ -32,7 +32,7 @@ function modFlagActive() { try { fs.accessSync(MOD_FLAG); return true; } catch(e
 
 // Limpiar señales viejas al arrancar
 modFlagClear();
-[RESET_FLAG, LOBBY_FILE, PHASE_FILE].forEach(f => { try { fs.unlinkSync(f); } catch(e){} });
+[RESET_FLAG, LOBBY_FILE, PHASE_FILE, TURN_FILE, FINISH_FILE].forEach(f => { try { fs.unlinkSync(f); } catch(e){} });
 
 // ─── POLLING CROSS-PROCESO (600ms, 100% async) ────────────────────────────────
 setInterval(() => {
@@ -66,7 +66,7 @@ setInterval(() => {
     if (err || !raw) return;
     try {
       const d = JSON.parse(raw);
-      if (!d || !d.team || Date.now()-d.ts > 10000) return;
+      if (!d || !d.team || Date.now()-d.ts > 3000) return;
       io.emit('p1:teamDone',  { team: d.team, scores: d.scores, words: d.words });
       io.emit('p1:rivalDone', { team: d.team, scores: d.scores });
     } catch(e){}
