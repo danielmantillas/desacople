@@ -262,7 +262,7 @@ textarea{resize:none;line-height:1.5;}
 </head>
 <body>
 
-<div id="mod-float" class="hidden" style="position:fixed;bottom:20px;right:20px;z-index:9999;"><button onclick="if(confirm('Terminar?'))socket.emit('reset')" style="background:#c0392b;color:white;border:none;border-radius:12px;padding:12px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 15px rgba(0,0,0,0.3);">Terminar juego</button></div>
+<div id="mod-float" class="hidden" style="position:fixed;bottom:20px;right:20px;z-index:9999;"><button onclick="if(confirm('Terminar y reiniciar?'))socket.emit('reset')" style="background:#c0392b;color:white;border:none;border-radius:12px;padding:12px 20px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 15px rgba(0,0,0,0.3);">Terminar juego</button></div>
 
 <div id="s-land" class="screen active">
   <div class="center-wrap">
@@ -271,13 +271,13 @@ textarea{resize:none;line-height:1.5;}
       <p style="font-size:13px;color:#888;margin-bottom:24px;line-height:1.5;">Un juego sobre el compromiso ambiental universitario y lo que realmente ocurre en red.</p>
       <label for="pname">Tu nombre</label>
       <input type="text" id="pname" placeholder="¿Cómo te llamamos?" style="margin-bottom:14px;">
-      <div id="view-player">
+      <div id="vp">
         <button class="btn btn-dark" onclick="joinGame(false)">Entrar al juego →</button>
         <div class="divider"><div class="div-line"></div><span class="div-text">¿eres el moderador?</span><div class="div-line"></div></div>
         <a class="link" onclick="switchView('mod')">Acceder como moderador →</a>
       </div>
-      <div id="view-mod" style="display:none;margin-top:4px;">
-        <input type="password" id="mod-pass" placeholder="Contraseña de moderador" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:15px;border:1.5px solid #ddd;border-radius:10px;font-family:inherit;outline:none;margin-bottom:12px;">
+      <div id="vm" style="display:none;">
+        <input type="password" id="mod-pass" placeholder="Contraseña de moderador" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:15px;border:1.5px solid #ddd;border-radius:10px;font-family:inherit;margin-bottom:12px;outline:none;">
         <button class="btn btn-dark" onclick="joinGame(true)">Entrar como moderador →</button>
         <div class="divider"><div class="div-line"></div><div class="div-line"></div></div>
         <a class="link" onclick="switchView('player')">← Volver</a>
@@ -289,15 +289,15 @@ textarea{resize:none;line-height:1.5;}
 <div id="s-role" class="screen">
   <div class="center-wrap">
     <div class="card" style="text-align:center;">
-      <p style="font-size:15px;color:#555;margin-bottom:4px;">Hola, <strong id="role-player-name"></strong>.</p>
-      <p style="font-size:13px;color:#aaa;margin-bottom:24px;">El sistema te ha asignado un rol en la red:</p>
-      <div id="role-card" style="border-radius:14px;padding:28px 20px;margin-bottom:20px;">
-        <div id="role-type-tag" style="display:inline-block;font-size:11px;font-weight:700;padding:4px 14px;border-radius:20px;margin-bottom:14px;"></div>
-        <div id="role-title" style="font-size:34px;font-weight:800;margin-bottom:12px;"></div>
-        <div id="role-desc" style="font-size:13px;line-height:1.7;color:#555;"></div>
+      <p style="font-size:15px;color:#555;margin-bottom:4px;">Hola, <strong id="role-pname"></strong>.</p>
+      <p style="font-size:13px;color:#aaa;margin-bottom:20px;">El sistema te ha asignado un rol en la red:</p>
+      <div id="role-card" style="border-radius:14px;padding:24px 18px;margin-bottom:16px;">
+        <div id="role-tag" style="display:inline-block;font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;margin-bottom:12px;background:#f5ede0;color:#7a4a1a;"></div>
+        <div id="role-title" style="font-size:32px;font-weight:800;margin-bottom:10px;"></div>
+        <div id="role-desc" style="font-size:13px;line-height:1.6;color:#555;"></div>
       </div>
-      <div id="role-team-badge" style="display:inline-block;font-size:12px;font-weight:700;padding:5px 18px;border-radius:20px;margin-bottom:20px;"></div>
-      <button class="btn btn-dark" onclick="goToLobby()">Ver sala de espera &rarr;</button>
+      <div id="role-team" style="display:inline-block;font-size:12px;font-weight:700;padding:4px 16px;border-radius:20px;margin-bottom:20px;"></div>
+      <button class="btn btn-dark" onclick="goToLobby()">Ver sala de espera →</button>
     </div>
   </div>
 </div>
@@ -317,7 +317,7 @@ textarea{resize:none;line-height:1.5;}
       <div class="mb-info"><div class="mb-title">Panel del moderador</div><div class="mb-sub">Tú controlas cuándo empieza el juego</div></div>
       <div class="mb-stats"><div class="mbs"><div class="mbsv" id="mod-total">0</div><div class="mbsl">conectados</div></div><div class="mbs"><div class="mbsv" style="color:#4CAF50;" id="mod-unis">0</div><div class="mbsl">universidades</div></div></div>
       <button class="btn-start" onclick="startGame()">Iniciar juego ▶</button>
-      <button onclick="if(confirm('Reiniciar?'))socket.emit('reset')" style="background:#c0392b;color:white;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-left:8px;">Reiniciar</button>
+      <button onclick="if(confirm('Reiniciar?'))socket.emit('reset')" style="background:#c0392b;color:white;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;margin-left:8px;">↺ Reiniciar</button>
     </div>
     <div class="wait-bar" id="wait-bar"><div class="pulse-dot"></div><span>Esperando que el moderador inicie el juego...</span></div>
   </div>
@@ -448,43 +448,42 @@ textarea{resize:none;line-height:1.5;}
 </div>
 
 <script>
-const socket=io({transports:['websocket','polling']});
+const socket=io({transports:['polling'],reconnection:true,reconnectionDelay:2000});
+socket.on('connect_error',e=>console.error('[socket]',e.message));
 let myId=null,myName='',myRole=null,myRoleLabel='',myTeam=null,myColor='#ddd',myTextColor='#333',myInitials='',isMod=false;
 let gs={},p1Timer=null,p1Time=60,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
 let emojiStr='',selNext=null,dashData=null,subRevealed=false;
 
-function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);const mf=document.getElementById('mod-float');if(mf){const gs2=['s-p1','s-p2','s-p3','s-p1fin','s-p2fin','s-p3fin','s-dash'];if(isMod&&gs2.includes(id))mf.classList.remove('hidden');else mf.classList.add('hidden');}}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');window.scrollTo(0,0);const mf=document.getElementById('mod-float');if(mf){const g=['s-p1','s-p2','s-p3','s-p1fin','s-p2fin','s-p3fin','s-dash'];mf.classList.toggle('hidden',!(isMod&&g.includes(id)));}}
 function notif(msg,d=3000){const n=document.createElement('div');n.className='notif';n.textContent=msg;document.body.appendChild(n);setTimeout(()=>n.remove(),d);}
 function fmt(s){return Math.floor(s/60)+':'+(s%60<10?'0':'')+s%60;}
 function mkAv(ini,bg,tc,sz=24){const d=document.createElement('div');d.style.cssText='background:'+bg+';color:'+tc+';width:'+sz+'px;height:'+sz+'px;font-size:'+Math.floor(sz*.38)+'px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-weight:700;';d.textContent=ini;return d;}
 function makePd(i,st){const d=document.createElement('div');d.className='pd'+(st==='done'?' done':st==='cur'?' cur':'');d.textContent=i+1;return d;}
 function hiWord(text,word,cls){if(!word)return text;return text.replace(new RegExp('('+word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+')','gi'),'<span class="'+cls+'">$1</span>');}
 
-function switchView(v){
-  document.getElementById('view-player').style.display=v==='player'?'':'none';
-  document.getElementById('view-mod').style.display=v==='mod'?'':'none';
-}
+const RDESC={universidad:'Representas la institución académica. Tienes el compromiso formal, pero también la distancia del territorio.',gobierno:'Representas la institucionalidad pública. Tienes poder de decisión, pero también de omisión.',empresa:'Tu lógica es la eficiencia. Tu riesgo es el greenwashing.',org_civil:'Eres el puente entre la norma y la comunidad.',comunidad:'Tu voz es la más legítima y la menos escuchada.'};
+const RTYPE={universidad:'Actor Institucional',gobierno:'Actor Territorial',empresa:'Actor Económico',org_civil:'Actor Social',comunidad:'Actor Comunitario'};
+
+function switchView(v){document.getElementById('vp').style.display=v==='player'?'':'none';document.getElementById('vm').style.display=v==='mod'?'':'none';}
+
 function joinGame(asMod){
   const name=document.getElementById('pname').value.trim();
   if(!name){notif('Escribe tu nombre primero');return;}
-  const password=asMod?(document.getElementById('mod-pass')?.value.trim()||''):'';
-  if(asMod&&!password){notif('Escribe la contraseña');return;}
+  const pwd=asMod?(document.getElementById('mod-pass')?.value.trim()||''):'';
+  if(asMod&&!pwd){notif('Escribe la contraseña');return;}
   myName=name;isMod=asMod;
   myInitials=name.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
-  socket.emit('join',{name,isModerator:asMod,password});
+  socket.emit('join',{name,isModerator:asMod,password:pwd});
 }
 socket.on('joinError',({msg})=>notif(msg,5000));
 
-const ROLE_DESCS={universidad:'Representas la institucion academica. Tienes el compromiso formal.',gobierno:'Representas la institucionalidad publica. Tienes poder de decision.',empresa:'Tu logica es la eficiencia, tu riesgo es el greenwashing.',org_civil:'Eres el puente entre la norma y la comunidad.',comunidad:'Tu voz es la mas legitima y la menos escuchada.'};
-const ROLE_TYPE={universidad:'Actor Institucional',gobierno:'Actor Territorial',empresa:'Actor Economico',org_civil:'Actor Social',comunidad:'Actor Comunitario'};
-
 function showRoleScreen(role,roleLabel,team,color,textColor){
-  document.getElementById('role-player-name').textContent=myName;
-  const card=document.getElementById('role-card');card.style.background=color+'22';card.style.border='1.5px solid '+color+'88';
-  const tag=document.getElementById('role-type-tag');tag.textContent=ROLE_TYPE[role]||'';tag.style.background='#f5ede0';tag.style.color='#7a4a1a';
-  const title=document.getElementById('role-title');title.textContent=roleLabel;title.style.color=textColor;
-  document.getElementById('role-desc').textContent=ROLE_DESCS[role]||'';
-  const badge=document.getElementById('role-team-badge');badge.textContent='Equipo '+team;badge.style.background=color+'33';badge.style.color=textColor;
+  document.getElementById('role-pname').textContent=myName;
+  const card=document.getElementById('role-card');card.style.background=color+'22';card.style.border='1.5px solid '+color+'55';
+  document.getElementById('role-tag').textContent=RTYPE[role]||role;
+  const t=document.getElementById('role-title');t.textContent=roleLabel;t.style.color=textColor;
+  document.getElementById('role-desc').textContent=RDESC[role]||'';
+  const b=document.getElementById('role-team');b.textContent='Equipo '+team;b.style.background=color+'33';b.style.color=textColor;
   showScreen('s-role');
 }
 function goToLobby(){showScreen('s-lobby');renderMyRoleBanner();}
@@ -504,8 +503,7 @@ socket.on('restoreState',(data)=>{
     else if(window._joinIsNew)showRoleScreen(myRole,myRoleLabel,myTeam,myColor,myTextColor);
     else{showScreen('s-lobby');renderMyRoleBanner();}
   } else if(data.phase==='phase1'){showScreen('s-lobby');renderMyRoleBanner();initP1();}
-  else if(data.phase==='phase1Done'){showP1Fin(gs.scores||{A:0,B:0});}
-  else if(data.phase==='phase2'){showScreen('s-lobby');renderMyRoleBanner();initP2(data.timeA,data.timeB,data.wordsA,data.wordsB);}
+  else if(data.phase==='phase2'){initP2(data.timeA,data.timeB,data.wordsA,data.wordsB);}
   else if(data.phase==='phase3'){showScreen('s-lobby');renderMyRoleBanner();initP3();}
 });
 
@@ -549,7 +547,7 @@ function startGame(){socket.emit('startGame');}
 
 socket.on('phaseChange',({phase,state,scores,timeA,timeB,wordsA,wordsB})=>{
   if(state)gs=state;
-  if(phase==='phase1'){if(document.getElementById('s-p1').classList.contains('active'))return;initP1();return;}
+  if(phase==='phase1'){if(!document.getElementById('s-p1').classList.contains('active'))initP1();return;}
   if(phase==='phase1Done'){showP1Fin(scores);return;}
   if(phase==='phase1Done'){showP1Fin(scores);return;}
   if(phase==='phase2'){initP2(timeA,timeB,wordsA,wordsB);return;}
@@ -567,85 +565,66 @@ function initP1(){
 }
 
 function renderProgs(dA,dB,sA,sB){
-  const myD=myTeam==='A'?dA:dB, otD=myTeam==='A'?dB:dA;
-  const myS=myTeam==='A'?sA:sB, otS=myTeam==='A'?sB:sA;
-  // Dots horizontales para mi equipo
-  const pm=document.getElementById('prog-my'); if(pm){pm.innerHTML=''; pm.style.cssText='display:flex;flex-direction:row;gap:4px;align-items:center;';}
-  const po=document.getElementById('prog-other'); if(po){po.innerHTML=''; po.style.cssText='display:flex;flex-direction:row;gap:4px;align-items:center;';}
-  for(let i=0;i<6;i++){
-    if(pm) pm.appendChild(makePd(i,i<myD?'done':i===myD?'cur':''));
-    if(po) po.appendChild(makePd(i,i<otD?'done':i===otD?'cur':''));
-  }
-  // Puntaje propio visible
-  const ps=document.getElementById('p1-score'); if(ps) ps.textContent=myS+' pts';
+  const myD=myTeam==='A'?dA:dB,otD=myTeam==='A'?dB:dA,myS=myTeam==='A'?sA:sB,otS=myTeam==='A'?sB:sA;
+  const pm=document.getElementById('prog-my');
+  if(pm){pm.innerHTML='';pm.style.cssText='display:flex;flex-direction:row;gap:3px;align-items:center;';
+    for(let i=0;i<6;i++)pm.appendChild(makePd(i,i<myD?'done':i===myD?'cur':''));}
+  const po=document.getElementById('prog-other');
+  if(po){po.innerHTML='';po.style.cssText='display:flex;flex-direction:row;gap:3px;align-items:center;';
+    for(let i=0;i<6;i++)po.appendChild(makePd(i,i<otD?'done':i===otD?'cur':''));}
+  const ps=document.getElementById('p1-score');if(ps)ps.textContent=myS+' pts';
   const op=document.getElementById('other-pts'),ol=document.getElementById('other-lbl');
-  if(op) op.textContent=otS;
-  if(ol){
-    if(otS>myS){op.style.color='#c0392b';ol.textContent='puntos · van adelante';ol.style.color='#c0392b';}
+  if(op)op.textContent=otS;
+  if(ol){if(otS>myS){op.style.color='#c0392b';ol.textContent='puntos · van adelante';ol.style.color='#c0392b';}
     else if(otS<myS){op.style.color='#0F6E56';ol.textContent='puntos · van atrás';ol.style.color='#0F6E56';}
-    else{op.style.color='#1a1a1a';ol.textContent='puntos · empate';ol.style.color='#888';}
-  }
+    else{op.style.color='#1a1a1a';ol.textContent='puntos · empate';ol.style.color='#888';}}
 }
 
 socket.on('p1:turnUpdate',({team,turn,wordIndex,scores,passes})=>{
-  gs.scores=scores;
-  // Actualizar progreso de MI equipo o del rival
+  gs.scores=scores; updateScores(scores);
   if(team===myTeam){
-    renderProgs(wordIndex, gs._rivalIdx||0, scores.A, scores.B);
+    gs._myIdx=wordIndex;
+    renderProgs(wordIndex,gs._rivalIdx||0,scores.A,scores.B);
     const mp=gs.players?.[turn.mime],gp=gs.players?.[turn.guesser];
-    const txt=document.getElementById('p1-turn-txt');if(txt)txt.textContent=(mp?mp.name:'?')+' mima · '+(gp?gp.name:'?')+' adivina';
+    const tt=document.getElementById('p1-turn-txt');if(tt)tt.textContent=(mp?mp.name:'?')+' mima · '+(gp?gp.name:'?')+' adivina';
     renderQueue(turn);
-    if(turn.mime!==myId && turn.guesser!==myId){ stopP1Timer(); renderP1Zone('obs'); }
+    if(turn.mime!==myId&&turn.guesser!==myId){stopP1Timer();renderP1Zone('obs');}
   } else {
     gs._rivalIdx=wordIndex;
-    renderProgs(gs._myIdx||0, wordIndex, scores.A, scores.B);
+    renderProgs(gs._myIdx||0,wordIndex,scores.A,scores.B);
   }
-  updateScores(scores);
 });
 
-socket.on('p1:yourTurn',({role,word,hints})=>{if(role==='mime'){renderP1Zone('mime',word,hints);startP1Timer();}else{renderP1Zone('guess');startP1Timer();}});
+socket.on('p1:yourTurn',({role,word,hints})=>{if(role==='mime'){renderP1Zone('mime',word,hints);}else{renderP1Zone('guess');}startP1Timer();});
 socket.on('p1:emoji',({from,fromName,emoji,team})=>{if(team!==myTeam)return;addChat({color:gs.players?.[from]?.color||'#ddd',tc:gs.players?.[from]?.textColor||'#333',ini:gs.players?.[from]?.initials||'?',tag:'pista',tc2:'rtm',content:'<div class="eb">'+emoji+'</div>'});});
 socket.on('p1:guessResult',({from,guess,correct,team})=>{if(team!==myTeam)return;addChat({color:gs.players?.[from]?.color||'#ddd',tc:gs.players?.[from]?.textColor||'#333',ini:gs.players?.[from]?.initials||'?',tag:'intento',tc2:'rtg',content:correct?'<span class="gok">¡'+guess+'! ✓</span>':'<span class="gtry">'+guess+'</span>'});});
 socket.on('p1:wordGuessed',({team,wordNum,by,scores})=>{
   gs.scores=scores; updateScores(scores);
-  if(team===myTeam){
-    gs._myIdx=wordNum;
-    addChat({sys:true,content:'Palabra '+wordNum+' adivinada por <b>'+by+'</b> ✓'});
-    renderProgs(wordNum, gs._rivalIdx||0, scores.A, scores.B);
-  } else {
-    gs._rivalIdx=wordNum;
-    renderProgs(gs._myIdx||0, wordNum, scores.A, scores.B);
-  }
+  if(team===myTeam){gs._myIdx=wordNum;addChat({sys:true,content:'Palabra '+wordNum+' adivinada por <b>'+by+'</b> ✓'});renderProgs(wordNum,gs._rivalIdx||0,scores.A,scores.B);}
+  else{gs._rivalIdx=wordNum;renderProgs(gs._myIdx||0,wordNum,scores.A,scores.B);}
+});
+socket.on('p1:rivalProgress',({team,count})=>{
+  if(team===myTeam){gs._myIdx=count;renderProgs(count,gs._rivalIdx||0,gs.scores?.A||0,gs.scores?.B||0);}
+  else{gs._rivalIdx=count;renderProgs(gs._myIdx||0,count,gs.scores?.A||0,gs.scores?.B||0);}
+});
+socket.on('p1:rivalDone',({team,scores})=>{
+  gs.scores=scores;updateScores(scores);
+  if(team!==myTeam)notif('⚡ El equipo rival terminó la Fase 1',5000);
+});
+socket.on('p1:teamDone',({team,scores,words})=>{
+  gs.scores=scores;updateScores(scores);
+  if(team===myTeam)notif('🎉 ¡Tu equipo terminó la Fase 1!',5000);
+});
+socket.on('p1:modUpdate',({team,word,mimeName,guesserName,scores})=>{
+  if(!isMod)return; gs.scores=scores; updateScores(scores);
+  notif('Eq.'+team+': '+mimeName+' → '+guesserName+' | "'+word+'"',3000);
 });
 socket.on('p1:wordRevealed',({word,index})=>{const list=document.getElementById('p1-uni-words');if(!list)return;const items=list.querySelectorAll('span');if(items[index]){items[index].textContent=word;items[index].className='uni-w';}});
 socket.on('p1:hint',({hint,idx})=>{const el=document.getElementById('hint-disp');if(el){el.textContent='💡 '+hint;el.className='hint-txt';el.style.display='inline-block';}for(let i=0;i<=idx;i++){const b=document.getElementById('hb'+i);if(b)b.disabled=true;}});
-socket.on('p1:teamDone',({team,scores,words})=>{
-  gs.scores=scores; updateScores(scores);
-  if(team===myTeam){
-    notif('¡Tu equipo terminó la Fase 1! 🎉',4000);
-  }
-});
-socket.on('p1:rivalDone',({team,scores})=>{
-  gs.scores=scores; updateScores(scores);
-  if(team!==myTeam){
-    notif('⚡ El equipo rival terminó la Fase 1 — esperando al moderador',5000);
-  }
-});
-socket.on('scores',s=>{gs.scores=s;updateScores(s);});
-socket.on('p1:rivalProgress',({team,count})=>{
-  if(team===myTeam)return;
-  const dA=myTeam==='A'?0:count, dB=myTeam==='B'?0:count;
-  const po=document.getElementById('prog-other');if(!po)return;
-  po.innerHTML='';for(let i=0;i<6;i++)po.appendChild(makePd(i,i<count?'done':i===count?'cur':''));
-});
-socket.on('p1:modUpdate',({team,mimeName,guesserName,word,idx,scores})=>{
-  if(!isMod)return;
-  notif('Eq.'+team+': '+mimeName+' → '+guesserName+' | "'+word+'"',3000);
-  gs.scores=scores;updateScores(scores);
-});
-socket.on('p1:timerReset',()=>{stopP1Timer();startP1Timer();});
 
-function updateScores(s){if(!s)return;const myS=myTeam==='A'?s.A:s.B;['p1-score','p2-score','p3-score'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=myS+' pts';});}
+socket.on('scores',s=>{gs.scores=s;updateScores(s);});
+
+function updateScores(s){const myS=myTeam==='A'?s.A:s.B;['p1-score','p2-score','p3-score'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=myS+' pts';});}
 function startP1Timer(){p1Time=60;if(p1Timer)clearInterval(p1Timer);updP1Timer();p1Timer=setInterval(()=>{p1Time--;updP1Timer();if(p1Time<=0)stopP1Timer();},1000);}
 function stopP1Timer(){if(p1Timer){clearInterval(p1Timer);p1Timer=null;}}
 function updP1Timer(){const el=document.getElementById('p1-timer'),bar=document.getElementById('p1-tbar');el.textContent='0:'+(p1Time<10?'0':'')+p1Time;el.className='timer-b '+(p1Time<=10?'thot':'tok');if(bar)bar.style.width=(p1Time/60*100)+'%';}
@@ -866,15 +845,12 @@ function revealSub(){
 socket.on('reset',()=>{
   try{sessionStorage.clear();}catch(e){}
   if(!isMod){
-    // Mostrar mensaje a jugadores antes de recargar
-    const overlay=document.createElement('div');
-    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;';
-    overlay.innerHTML='<div style="text-align:center;color:white;"><div style="font-size:48px;margin-bottom:16px;">🏁</div><div style="font-size:22px;font-weight:700;margin-bottom:8px;">El juego ha terminado</div><div style="font-size:14px;color:#aaa;margin-bottom:24px;">El moderador cerró la sesión</div><div style="font-size:12px;color:#666;">Redirigiendo...</div></div>';
-    document.body.appendChild(overlay);
-    setTimeout(()=>location.reload(), 2500);
-  } else {
-    location.reload();
-  }
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:99999;display:flex;align-items:center;justify-content:center;';
+    ov.innerHTML='<div style="text-align:center;color:white;"><div style="font-size:44px;margin-bottom:14px;">🏁</div><div style="font-size:20px;font-weight:700;margin-bottom:8px;">El juego ha terminado</div><div style="font-size:13px;color:#aaa;">Redirigiendo al inicio...</div></div>';
+    document.body.appendChild(ov);
+    setTimeout(()=>location.reload(),2500);
+  } else location.reload();
 });
 </script>
 </body>
