@@ -141,16 +141,14 @@ setInterval(() => {
       console.log('[SYNC] fase:', prevPhase, '->', gs.phase);
       if (gs.phase === 'phase1') {
         io.emit('phaseChange', { phase:'phase1', state:pubState() });
-        setTimeout(resendTurns, 600);
+        setTimeout(resendTurns, 800);
       } else if (gs.phase === 'phase2') {
         io.emit('phaseChange', { phase:'phase2', timeA:gs.p2.timeA, timeB:gs.p2.timeB, wordsA:gs.p1.guessedA, wordsB:gs.p1.guessedB });
       } else if (gs.phase === 'phase3') {
         io.emit('phaseChange', { phase:'phase3', state:pubState(), wordsA:gs.p3.wordsA, wordsB:gs.p3.wordsB });
       }
+      // NO re-emitir phaseChange si fase no cambio, solo sync de UI
     }
-
-    // Si fase1 activa → reenviar turno a sockets locales
-    if (gs.phase === 'phase1') resendTurns();
 
   } catch(e) {}
 }, 500);
@@ -228,18 +226,33 @@ function startTurn(team) {
   if(turn.guesser) io.to(turn.guesser).emit('p1:yourTurn',{role:'guesser'});
   io.to('moderator').emit('p1:modUpdate',{team,mimeName:gs.players[turn.mime]?.name,guesserName:gs.players[turn.guesser]?.name,word,idx,scores:gs.scores});
   diskSave();
-  p1[tk]=setTimeout(()=>doPass(team,'timeout'), TURN_MS);
+  const _mime = turn.mime;
+  p1[tk]=setTimeout(()=>doPass(team,'timeout',_mime), TURN_MS);
 }
 
-function doPass(team, src) {
+function doPass(team, src, expectedMime) {
   const p1=gs.p1, tk=team==='A'?'timerA':'timerB';
+  // Evitar doPass doble: verificar que el turno no cambio ya
+  const turn = team==='A' ? p1.turnA : p1.turnB;
+  if (expectedMime && turn.mime !== expectedMime) { console.log('[SKIP doPass] turno ya cambio'); return; }
   if(p1[tk]){clearTimeout(p1[tk]);p1[tk]=null;}
   if(src!=='timeout'){
     if(team==='A'){p1.passesA++;gs.scores.A-=3;}else{p1.passesB++;gs.scores.B-=3;}
   }
-  // Avanzar la palabra al pasar (no esperar a que se adivine)
-  if(team==='A'){p1.idxA=(p1.idxA+1)%p1.wordsA.length;}
-  else{p1.idxB=(p1.idxB+1)%p1.wordsB.length;}
+  // Avanzar a la siguiente palabra NO adivinada
+  const words = team==='A' ? p1.wordsA : p1.wordsB;
+  const guessed = team==='A' ? p1.guessedA : p1.guessedB;
+  let curIdx = team==='A' ? p1.idxA : p1.idxB;
+  // Buscar siguiente palabra no adivinada
+  let found = false;
+  for (let i=1; i<=words.length; i++) {
+    const nextIdx = (curIdx + i) % words.length;
+    if (!guessed.includes(words[nextIdx])) {
+      if (team==='A') p1.idxA = nextIdx; else p1.idxB = nextIdx;
+      found = true; break;
+    }
+  }
+  if (!found) return; // Todas adivinadas, no deberia pasar
   nextTurn(team); startTurn(team);
   io.emit('scores',gs.scores);
 }
@@ -249,7 +262,7 @@ function finishP1(team) {
   if(team==='A'){gs.p1.finA=true;gs.p2.timeA=210;}else{gs.p1.finB=true;gs.p2.timeB=210;}
   io.emit('p1:teamDone',{team,scores:gs.scores,words:team==='A'?gs.p1.guessedA:gs.p1.guessedB});
   if(gs.p1.finA&&gs.p1.finB){
-    gs.phase='phase2'; diskSave();
+    gs.phase='phase2'; if(_saveTimer){clearTimeout(_saveTimer);_saveTimer=null;} diskSave();
     io.emit('phaseChange',{phase:'phase1Done',scores:gs.scores});
   }
 }
