@@ -464,7 +464,7 @@ function hiWord(text,word,cls){if(!word)return text;return text.replace(new RegE
 const RDESC={universidad:'Representas la institución académica. Tienes el compromiso formal, pero también la distancia del territorio.',gobierno:'Representas la institucionalidad pública. Tienes poder de decisión, pero también de omisión.',empresa:'Tu lógica es la eficiencia. Tu riesgo es el greenwashing.',org_civil:'Eres el puente entre la norma y la comunidad.',comunidad:'Tu voz es la más legítima y la menos escuchada.'};
 const RTYPE={universidad:'Actor Institucional',gobierno:'Actor Territorial',empresa:'Actor Económico',org_civil:'Actor Social',comunidad:'Actor Comunitario'};
 
-function switchView(v){document.getElementById('vp').style.display=v==='player'?'':'none';document.getElementById('vm').style.display=v==='mod'?'':'none';}
+function switchView(v){document.getElementById('vp').style.display=v==='player'?'block':'none';document.getElementById('vm').style.display=v==='mod'?'block':'none';}
 
 function joinGame(asMod){
   const name=document.getElementById('pname').value.trim();
@@ -475,7 +475,7 @@ function joinGame(asMod){
   myInitials=name.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
   socket.emit('join',{name,isModerator:asMod,password:pwd});
 }
-socket.on('joinError',({msg})=>notif(msg,5000));
+socket.on('joinError',({msg})=>notif(msg,8000));
 
 function showRoleScreen(role,roleLabel,team,color,textColor){
   document.getElementById('role-pname').textContent=myName;
@@ -490,6 +490,7 @@ function goToLobby(){showScreen('s-lobby');renderMyRoleBanner();}
 
 socket.on('joined',({id,isModerator,role,roleLabel,team,color,textColor,isNew})=>{
   myId=id;
+  isMod=!!isModerator;
   if(!isModerator){myRole=role;myRoleLabel=roleLabel;myTeam=team;myColor=color;myTextColor=textColor;}
   document.getElementById('lobby-url').textContent=window.location.host;
   if(isModerator){document.getElementById('mod-bar').classList.remove('hidden');document.getElementById('wait-bar').classList.add('hidden');}
