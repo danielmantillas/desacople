@@ -135,6 +135,18 @@ let lastHash = (()=>{
 })();
 setInterval(() => {
   try {
+    // Detectar señal de reset de otro proceso
+    const resetFile = STATE_FILE+'.reset';
+    if (fs.existsSync(resetFile)) {
+      try {
+        const resetTs = parseInt(fs.readFileSync(resetFile,'utf8'));
+        if (Date.now()-resetTs < 5000) {
+          fs.unlinkSync(resetFile);
+          io.emit('reset');
+          console.log('[RELAY] reset desde otro proceso');
+        }
+      } catch(e) {}
+    }
     if (!fs.existsSync(STATE_FILE)) return;
     let raw; try { raw = fs.readFileSync(STATE_FILE, 'utf8'); } catch(e){ return; }
     if (raw === lastHash) return;
@@ -240,15 +252,11 @@ function startTurn(team) {
   if(turn.guesser) io.to(turn.guesser).emit('p1:yourTurn',{role:'guesser'});
   io.to('moderator').emit('p1:modUpdate',{team,mimeName:gs.players[turn.mime]?.name,guesserName:gs.players[turn.guesser]?.name,word,idx,scores:gs.scores});
   diskSave();
-  const _mime = turn.mime;
-  p1[tk]=setTimeout(()=>doPass(team,'timeout',_mime), TURN_MS);
+  p1[tk]=setTimeout(()=>doPass(team,'timeout'), TURN_MS);
 }
 
-function doPass(team, src, expectedMime) {
+function doPass(team, src) {
   const p1=gs.p1, tk=team==='A'?'timerA':'timerB';
-  // Evitar doPass doble: verificar que el turno no cambio ya
-  const turn = team==='A' ? p1.turnA : p1.turnB;
-  if (expectedMime && turn.mime !== expectedMime) { console.log('[SKIP doPass] turno ya cambio'); return; }
   if(p1[tk]){clearTimeout(p1[tk]);p1[tk]=null;}
   if(src!=='timeout'){
     if(team==='A'){p1.passesA++;gs.scores.A-=3;}else{p1.passesB++;gs.scores.B-=3;}
@@ -551,7 +559,12 @@ io.on('connection', socket => {
   socket.on('reset', () => {
     if(socket.id!==gs.moderatorId) return;
     [gs.p1.timerA,gs.p1.timerB,gs.p3.timerA,gs.p3.timerB].forEach(t=>{if(t)clearTimeout(t);});
-    gs=makeState(); gs.modActive=true; diskSave();
+    gs=makeState(); gs.modActive=true;
+    if(_saveTimer){clearTimeout(_saveTimer);_saveTimer=null;}
+    // Guardar estado limpio + señal de reset para otros procesos
+    const resetState = JSON.stringify(gs);
+    try{fs.writeFileSync(STATE_FILE,resetState);lastHash=resetState;}catch(e){}
+    try{fs.writeFileSync(STATE_FILE+'.reset',String(Date.now()));}catch(e){}
     io.emit('reset');
     console.log('[RESET]');
   });
