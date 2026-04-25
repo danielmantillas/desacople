@@ -25,7 +25,7 @@ process.on('unhandledRejection', e => console.error('[REJ]', String(e)));
 // existsSync es ~0.1ms — no bloquea el event loop.
 function modFlagSet()    { try { fs.writeFileSync(MOD_FLAG, '1'); } catch(e){} }
 function modFlagClear()  { try { if(fs.existsSync(MOD_FLAG)) fs.unlinkSync(MOD_FLAG); } catch(e){} }
-function modFlagActive() { return fs.existsSync(MOD_FLAG); }
+function modFlagActive() { try{ fs.accessSync(MOD_FLAG); return true; }catch(e){ return false; } }
 
 // Al arrancar: limpiar flags viejos
 modFlagClear();
@@ -33,12 +33,8 @@ try { if(fs.existsSync(RESET_FLAG)) fs.unlinkSync(RESET_FLAG); } catch(e){}
 
 // Detectar reset de otro proceso (background, no bloquea)
 setInterval(() => {
-  if (fs.existsSync(RESET_FLAG)) {
-    try { fs.unlinkSync(RESET_FLAG); } catch(e){}
-    io.emit('reset');
-    console.log('[RELAY] reset desde otro proceso');
-  }
-}, 300);
+  try { if(fs.existsSync(RESET_FLAG)){fs.unlinkSync(RESET_FLAG);io.emit('reset');} } catch(e){}
+}, 2000);
 
 // Renovar mod flag cada 10s mientras hay mod conectado
 setInterval(() => { if (gs.modActive) modFlagSet(); }, 10000);
