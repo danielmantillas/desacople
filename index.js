@@ -45,18 +45,55 @@ function saveLobbyAsync() {
   }, 150);
 }
 setInterval(() => {
-  if (gs.phase !== 'lobby') return;
+  // Lobby sync
+  if (gs.phase === 'lobby') {
+    try {
+      const raw = fs.readFileSync(LOBBY_FILE, 'utf8');
+      if (raw !== _lastLobby) {
+        _lastLobby = raw;
+        const d = JSON.parse(raw);
+        if (d) {
+          const remoteLen = Object.keys(d.p||{}).length;
+          const localLen  = Object.keys(gs.players).length;
+          if (remoteLen > localLen) {
+            gs.players = d.p; gs.teamA = d.a; gs.teamB = d.b;
+            io.emit('lobbyUpdate', pubState());
+          }
+        }
+      }
+    } catch(e){}
+  }
+  // Reset signal
   try {
-    const raw = fs.readFileSync(LOBBY_FILE, 'utf8');
-    if (raw === _lastLobby) return;
-    _lastLobby = raw;
-    const d = JSON.parse(raw);
-    if (!d) return;
-    const remoteLen = Object.keys(d.p||{}).length;
-    const localLen  = Object.keys(gs.players).length;
-    if (remoteLen > localLen) {
-      gs.players = d.p; gs.teamA = d.a; gs.teamB = d.b;
-      io.emit('lobbyUpdate', pubState());
+    if (fs.existsSync(RESET_FLAG)) {
+      fs.unlinkSync(RESET_FLAG);
+      io.emit('reset');
+    }
+  } catch(e){}
+  // Phase signal (startGame cross-process)
+  try {
+    if (fs.existsSync(LOBBY_FILE+'.phase')) {
+      const raw = fs.readFileSync(LOBBY_FILE+'.phase','utf8');
+      fs.unlinkSync(LOBBY_FILE+'.phase');
+      const d = JSON.parse(raw);
+      if (d && d.phase) {
+        gs.players = d.players; gs.teamA = d.teamA; gs.teamB = d.teamB;
+        gs.phase = d.phase; gs.p1 = d.p1; gs.scores = d.scores;
+        io.emit('phaseChange', {phase:'phase1', state:pubState()});
+        setTimeout(() => {
+          ['A','B'].forEach(team => {
+            const turn = team==='A'?gs.p1.turnA:gs.p1.turnB;
+            const idx  = team==='A'?gs.p1.idxA:gs.p1.idxB;
+            const word = (team==='A'?gs.p1.wordsA:gs.p1.wordsB)[idx];
+            if (!word) return;
+            io.to('team'+team).emit('p1:turnUpdate',{team,turn,wordIndex:0,scores:gs.scores,passes:0});
+            for (const [sid,sock] of io.sockets.sockets) {
+              if (sid===turn.mime)    sock.emit('p1:yourTurn',{role:'mime',word,hints:wFind(word).h});
+              if (sid===turn.guesser) sock.emit('p1:yourTurn',{role:'guesser'});
+            }
+          });
+        }, 500);
+      }
     }
   } catch(e){}
 }, 400);
@@ -411,6 +448,11 @@ io.on('connection', socket => {
     gs.p1.queueB = shuffle([...gs.teamB]);
     nextTurn('A'); nextTurn('B');
     io.emit('phaseChange', {phase:'phase1', state:pubState()});
+    // Signal otros procesos
+    try {
+      const sig = JSON.stringify({phase:'phase1',players:gs.players,teamA:gs.teamA,teamB:gs.teamB,p1:JSON.parse(JSON.stringify(gs.p1,(k,v)=>(k==='timerA'||k==='timerB')?null:v)),scores:gs.scores});
+      fs.writeFileSync(LOBBY_FILE+'.phase', sig);
+    } catch(e){}
     setTimeout(() => { startTurn('A'); startTurn('B'); }, 800);
   });
 
