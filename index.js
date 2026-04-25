@@ -427,7 +427,6 @@ io.on('connection', socket => {
         gs.modActive = true;
         modFlagSet();
         [LOBBY_FILE, PHASE_FILE, TURN_FILE, FINISH_FILE].forEach(f => { try { fs.unlinkSync(f); } catch(e){} });
-        try { fs.writeFileSync(RESET_FLAG, '1'); } catch(e){}
         const ini = nm.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
         gs.players[socket.id] = { id: socket.id, name: nm, initials: ini, isModerator: true, role: null, roleLabel: null, team: null, color: '#ddd', textColor: '#333' };
         gs.moderatorId = socket.id;
