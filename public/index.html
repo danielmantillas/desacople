@@ -554,7 +554,6 @@ socket.on('phaseChange',({phase,state,scores,timeA,timeB,wordsA,wordsB})=>{
   if(state)gs=state;
   if(phase==='phase1'){if(!isMod&&!document.getElementById('s-p1').classList.contains('active'))initP1();return;}
   if(phase==='phase1Done'){showP1Fin(scores);return;}
-  if(phase==='phase1Done'){showP1Fin(scores);return;}
   if(phase==='phase2'){initP2(timeA,timeB,wordsA,wordsB);return;}
   if(phase==='phase2Done'){showP2Fin();return;}
   if(phase==='phase3'){initP3();return;}
@@ -670,7 +669,11 @@ function reqHint(idx){socket.emit('p1:hint',{idx});}
 
 function showP1Fin(scores){
   stopP1Timer();showScreen('s-p1fin');
-  document.getElementById('p1fin-stats').innerHTML='<div class="fst"><div class="fsv" style="color:#0C447C;">'+(scores?.A||0)+'</div><div class="fsl">pts A</div></div><div class="fst"><div class="fsv" style="color:#085041;">'+(scores?.B||0)+'</div><div class="fsl">pts B</div></div>';
+  const sA=scores?.A||0, sB=scores?.B||0;
+  const winner=sA>sB?'A':sB>sA?'B':'ninguno';
+  document.getElementById('p1fin-title').textContent=winner==='ninguno'?'¡Empate!':'¡Equipo '+winner+' ganó la carrera!';
+  document.getElementById('p1fin-sub').textContent=winner==='ninguno'?'Ambos terminaron al mismo tiempo.':'Adivinaron las 6 palabras primero. Su Universidad tendrá +30 segundos extra en la Fase 2.';
+  document.getElementById('p1fin-stats').innerHTML='<div class="fst"><div class="fsv" style="color:#0C447C;">'+sA+'</div><div class="fsl">pts Equipo A</div></div><div class="fst"><div class="fsv" style="color:#085041;">'+sB+'</div><div class="fsl">pts Equipo B</div></div>';
   if(isMod){document.getElementById('p1fin-btn').classList.remove('hidden');document.getElementById('p1fin-wait').classList.add('hidden');}
 }
 
