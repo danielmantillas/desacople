@@ -118,7 +118,7 @@ setInterval(() => {
 }, 200);
 
 // ── POLLING: sincronizar estado entre procesos ─────────────────────────────────
-let lastHash = '';
+let lastHash = (()=>{try{return fs.existsSync(STATE_FILE)?fs.readFileSync(STATE_FILE,'utf8'):'';}catch(e){return '';}})();
 setInterval(() => {
   try {
     if (!fs.existsSync(STATE_FILE)) return;
@@ -137,7 +137,8 @@ setInterval(() => {
     if (prevPlayers !== newPlayers) io.emit('lobbyUpdate', pubState());
 
     // Fase cambió → re-emitir phaseChange a clientes locales
-    if (prevPhase !== gs.phase) {
+    // Solo si hay sesión activa (modActive) para no propagar estado viejo
+    if (prevPhase !== gs.phase && gs.modActive) {
       console.log('[SYNC] fase:', prevPhase, '->', gs.phase);
       if (gs.phase === 'phase1') {
         io.emit('phaseChange', { phase:'phase1', state:pubState() });
@@ -147,7 +148,6 @@ setInterval(() => {
       } else if (gs.phase === 'phase3') {
         io.emit('phaseChange', { phase:'phase3', state:pubState(), wordsA:gs.p3.wordsA, wordsB:gs.p3.wordsB });
       }
-      // NO re-emitir phaseChange si fase no cambio, solo sync de UI
     }
 
   } catch(e) {}
