@@ -333,12 +333,32 @@ io.on('connection', socket => {
         delete gs.players[socket.id];
       }
 
-      // ── Reconexión: mismo nombre ───────────────────────────────────────────
+      // Moderador con contraseña siempre inicia sesión fresca
+      if (isModerator) {
+        if (password !== MOD_PASSWORD) {
+          socket.emit('joinError', {msg:'Contraseña incorrecta.'});
+          return;
+        }
+        [gs.p1.timerA,gs.p1.timerB,gs.p3.timerA,gs.p3.timerB].forEach(t=>{if(t)clearTimeout(t);});
+        gs = makeState();
+        gs.modActive = true;
+        modFlagSet();
+        try { if(fs.existsSync(LOBBY_FILE)) fs.unlinkSync(LOBBY_FILE); _lastLobby=''; } catch(e){}
+        const ini2 = nm.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
+        gs.players[socket.id] = {id:socket.id,name:nm,initials:ini2,isModerator:true,role:null,roleLabel:null,team:null,color:'#ddd',textColor:'#333'};
+        gs.moderatorId = socket.id;
+        socket.join('moderator');
+        socket.emit('joined', {id:socket.id, isModerator:true, isNew:true});
+        socket.emit('restoreState', {phase:'lobby'});
+        io.emit('lobbyUpdate', pubState());
+        console.log('[MOD NEW]', nm);
+        return;
+      }
+
+      // ── Reconexión jugador: mismo nombre ──────────────────────────────────
       const prev = Object.entries(gs.players)
-        .find(([,p]) => p.name===nm && p.isModerator===!!isModerator);
-      // Mod puede reconectar siempre (viene con isModerator=true)
-      // Jugadores solo reconectan si hay sesión activa
-      if (prev && (isModerator || gs.modActive || modFlagActive())) {
+        .find(([,p]) => p.name===nm && !p.isModerator);
+      if (prev && (gs.modActive || modFlagActive())) {
         const [oid, op] = prev;
         gs.players[socket.id] = {...op, id:socket.id};
         delete gs.players[oid];
@@ -346,14 +366,9 @@ io.on('connection', socket => {
         gs.teamB = gs.teamB.map(id=>id===oid?socket.id:id);
         if (gs.moderatorId===oid) { gs.moderatorId=socket.id; modFlagSet(); }
         const p = gs.players[socket.id];
-        if (isModerator) {
-          socket.join('moderator');
-          socket.emit('joined', {id:socket.id, isModerator:true, isNew:false});
-        } else {
-          socket.join('team'+p.team);
-          socket.emit('joined', {id:socket.id, isModerator:false, isNew:false,
-            role:p.role, roleLabel:p.roleLabel, team:p.team, color:p.color, textColor:p.textColor});
-        }
+        socket.join('team'+p.team);
+        socket.emit('joined', {id:socket.id, isModerator:false, isNew:false,
+          role:p.role, roleLabel:p.roleLabel, team:p.team, color:p.color, textColor:p.textColor});
         const ph = gs.phase;
         if      (ph==='lobby')  socket.emit('restoreState', {phase:'lobby'});
         else if (ph==='phase1') {
@@ -380,21 +395,8 @@ io.on('connection', socket => {
       }
 
       // ── Nuevo moderador ────────────────────────────────────────────────────
-      if (isModerator) {
-        if (password !== MOD_PASSWORD) {
-          socket.emit('joinError', {msg:'Contraseña incorrecta.'});
-          return;
-        }
-        // Limpiar timers y estado
-        [gs.p1.timerA,gs.p1.timerB,gs.p3.timerA,gs.p3.timerB]
-          .forEach(t=>{ if(t)clearTimeout(t); });
-        gs = makeState();
-        gs.modActive = true;
-        modFlagSet();
-        try { if(fs.existsSync(LOBBY_FILE)) fs.unlinkSync(LOBBY_FILE); _lastLobby=''; } catch(e){}
-
       // ── Nuevo jugador ──────────────────────────────────────────────────────
-      } else {
+      if (true) {
         // Bloquear si no hay moderador (en memoria O flag de disco)
         const hasMod = gs.modActive || modFlagActive();
         if (!hasMod) {
