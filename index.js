@@ -144,7 +144,7 @@ lastStateHash = (() => {
 try { fs.writeFileSync(EVT_FILE,'[]'); } catch(e){}
 
 // ─── POLLING ESTADO (500ms) ───────────────────────────────────────────────────
-let lastPollPhase = gs.phase;
+let lastPollPhase = gs.phase, lastTurnKey = '';
 setInterval(() => {
   try {
     const rf = STATE_FILE+'.reset';
@@ -173,6 +173,11 @@ setInterval(() => {
       }
       lastPollPhase = gs.phase;
     }
+    // Si fase1 activa, sincronizar turno si cambió (cross-proceso)
+    if (gs.phase === 'phase1') {
+      const tk = (gs.p1.turnA?.mime||'')+(gs.p1.turnA?.guesser||'')+(gs.p1.turnB?.mime||'')+(gs.p1.turnB?.guesser||'')+(gs.p1.idxA||0)+(gs.p1.idxB||0);
+      if (tk !== lastTurnKey) { lastTurnKey = tk; syncTurns(); }
+    }
   } catch(e) {}
 }, 500);
 
@@ -187,7 +192,7 @@ function syncTurns() {
     const word=words[idx], wd=wFind(word);
     for (const [sid, sock] of io.sockets.sockets) {
       if (sid===turn.mime)    sock.emit('p1:yourTurn',{role:'mime',    word, hints:wd.h});
-      if (sid===turn.guesser) sock.emit('p1:yourTurn',{role:'guesser', word});
+      if (sid===turn.guesser) sock.emit('p1:yourTurn',{role:'guesser'}); // sin word: no debe saber la palabra
     }
   });
 }
