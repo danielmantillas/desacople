@@ -31,72 +31,14 @@ function modFlagActive() { try{ fs.accessSync(MOD_FLAG); return true; }catch(e){
 modFlagClear();
 try { if(fs.existsSync(RESET_FLAG)) fs.unlinkSync(RESET_FLAG); } catch(e){}
 
-// Lobby sync: guarda y lee la lista de jugadores en segundo plano
-const LOBBY_FILE = '/tmp/dscp_lobby.json';
-let _lobbyWt = null, _lastLobby = '';
-function saveLobbyAsync() {
-  if (gs.phase !== 'lobby') return;
-  if (_lobbyWt) clearTimeout(_lobbyWt);
-  _lobbyWt = setTimeout(() => {
-    try {
-      const d = JSON.stringify({p:gs.players, a:gs.teamA, b:gs.teamB});
-      fs.writeFile(LOBBY_FILE, d, ()=>{});
-    } catch(e){}
-  }, 150);
-}
+// (lobby sync eliminado - un solo proceso Chrome)
+
+// Reset cross-proceso
 setInterval(() => {
-  // Lobby sync
-  if (gs.phase === 'lobby') {
-    try {
-      const raw = fs.readFileSync(LOBBY_FILE, 'utf8');
-      if (raw !== _lastLobby) {
-        _lastLobby = raw;
-        const d = JSON.parse(raw);
-        if (d) {
-          const remoteLen = Object.keys(d.p||{}).length;
-          const localLen  = Object.keys(gs.players).length;
-          if (remoteLen > localLen) {
-            gs.players = d.p; gs.teamA = d.a; gs.teamB = d.b;
-            io.emit('lobbyUpdate', pubState());
-          }
-        }
-      }
-    } catch(e){}
-  }
-  // Reset signal
   try {
-    if (fs.existsSync(RESET_FLAG)) {
-      fs.unlinkSync(RESET_FLAG);
-      io.emit('reset');
-    }
+    if (fs.existsSync(RESET_FLAG)) { fs.unlinkSync(RESET_FLAG); io.emit('reset'); }
   } catch(e){}
-  // Phase signal (startGame cross-process)
-  try {
-    if (fs.existsSync(LOBBY_FILE+'.phase')) {
-      const raw = fs.readFileSync(LOBBY_FILE+'.phase','utf8');
-      fs.unlinkSync(LOBBY_FILE+'.phase');
-      const d = JSON.parse(raw);
-      if (d && d.phase) {
-        gs.players = d.players; gs.teamA = d.teamA; gs.teamB = d.teamB;
-        gs.phase = d.phase; gs.p1 = d.p1; gs.scores = d.scores;
-        io.emit('phaseChange', {phase:'phase1', state:pubState()});
-        setTimeout(() => {
-          ['A','B'].forEach(team => {
-            const turn = team==='A'?gs.p1.turnA:gs.p1.turnB;
-            const idx  = team==='A'?gs.p1.idxA:gs.p1.idxB;
-            const word = (team==='A'?gs.p1.wordsA:gs.p1.wordsB)[idx];
-            if (!word) return;
-            io.to('team'+team).emit('p1:turnUpdate',{team,turn,wordIndex:0,scores:gs.scores,passes:0});
-            for (const [sid,sock] of io.sockets.sockets) {
-              if (sid===turn.mime)    sock.emit('p1:yourTurn',{role:'mime',word,hints:wFind(word).h});
-              if (sid===turn.guesser) sock.emit('p1:yourTurn',{role:'guesser'});
-            }
-          });
-        }, 500);
-      }
-    }
-  } catch(e){}
-}, 400);
+}, 1000);
 
 // ─── PALABRAS ─────────────────────────────────────────────────────────────────
 const WORDS = [
@@ -344,7 +286,6 @@ io.on('connection', socket => {
         gs = makeState();
         gs.modActive = true;
         modFlagSet();
-        try { if(fs.existsSync(LOBBY_FILE)) fs.unlinkSync(LOBBY_FILE); _lastLobby=''; } catch(e){}
         // Registrar moderador
         const ini = nm.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
         gs.players[socket.id] = {id:socket.id,name:nm,initials:ini,isModerator:true,
@@ -419,7 +360,6 @@ io.on('connection', socket => {
         role:p.role, roleLabel:p.roleLabel, team:p.team, color:p.color, textColor:p.textColor});
       socket.emit('restoreState', {phase:'lobby'});
       io.emit('lobbyUpdate', pubState());
-      saveLobbyAsync();
       console.log('[NEW]', nm, p.team);
 
     } catch(e) { console.error('[JOIN_ERR]', e.message); }
@@ -438,11 +378,7 @@ io.on('connection', socket => {
     gs.p1.queueB = shuffle([...gs.teamB]);
     nextTurn('A'); nextTurn('B');
     io.emit('phaseChange', {phase:'phase1', state:pubState()});
-    // Signal otros procesos
-    try {
-      const sig = JSON.stringify({phase:'phase1',players:gs.players,teamA:gs.teamA,teamB:gs.teamB,p1:JSON.parse(JSON.stringify(gs.p1,(k,v)=>(k==='timerA'||k==='timerB')?null:v)),scores:gs.scores});
-      fs.writeFileSync(LOBBY_FILE+'.phase', sig);
-    } catch(e){}
+
     setTimeout(() => { startTurn('A'); startTurn('B'); }, 800);
   });
 
