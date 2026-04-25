@@ -336,8 +336,9 @@ io.on('connection', socket => {
       // ── Reconexión: mismo nombre ───────────────────────────────────────────
       const prev = Object.entries(gs.players)
         .find(([,p]) => p.name===nm && p.isModerator===!!isModerator);
-      // Reconexión solo si hay sesión activa
-      if (prev && (gs.modActive || modFlagActive())) {
+      // Mod puede reconectar siempre (viene con isModerator=true)
+      // Jugadores solo reconectan si hay sesión activa
+      if (prev && (isModerator || gs.modActive || modFlagActive())) {
         const [oid, op] = prev;
         gs.players[socket.id] = {...op, id:socket.id};
         delete gs.players[oid];
