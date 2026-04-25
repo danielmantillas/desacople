@@ -504,6 +504,7 @@ socket.on('restoreState',(data)=>{
     else if(window._joinIsNew)showRoleScreen(myRole,myRoleLabel,myTeam,myColor,myTextColor);
     else{showScreen('s-lobby');renderMyRoleBanner();}
   } else if(data.phase==='phase1'){showScreen('s-lobby');renderMyRoleBanner();initP1();}
+  else if(data.phase==='phase1Done'){showP1Fin(gs.scores||{A:0,B:0});}
   else if(data.phase==='phase2'){showScreen('s-lobby');renderMyRoleBanner();initP2(data.timeA,data.timeB,data.wordsA,data.wordsB);}
   else if(data.phase==='phase3'){showScreen('s-lobby');renderMyRoleBanner();initP3();}
 });
@@ -548,7 +549,8 @@ function startGame(){socket.emit('startGame');}
 
 socket.on('phaseChange',({phase,state,scores,timeA,timeB,wordsA,wordsB})=>{
   if(state)gs=state;
-  if(phase==='phase1'){initP1();return;}
+  if(phase==='phase1'){if(document.getElementById('s-p1').classList.contains('active'))return;initP1();return;}
+  if(phase==='phase1Done'){showP1Fin(scores);return;}
   if(phase==='phase1Done'){showP1Fin(scores);return;}
   if(phase==='phase2'){initP2(timeA,timeB,wordsA,wordsB);return;}
   if(phase==='phase2Done'){showP2Fin();return;}
@@ -585,11 +587,10 @@ socket.on('p1:turnUpdate',({team,turn,wordIndex,scores,passes})=>{
   if(team!==myTeam)return;gs.scores=scores;
   renderProgs(team==='A'?wordIndex:0,team==='B'?wordIndex:0,scores.A,scores.B);
   const mp=gs.players?.[turn.mime],gp=gs.players?.[turn.guesser];
-  document.getElementById('p1-turn-txt').textContent=(mp?mp.name:'?')+' mima · '+(gp?gp.name:'?')+' adivina';
+  const txt=document.getElementById('p1-turn-txt');if(txt)txt.textContent=(mp?mp.name:'?')+' mima · '+(gp?gp.name:'?')+' adivina';
   renderQueue(turn);
-  // Solo reset timer si eres mime o guesser, si no limpiar timer
-  if(turn.mime===myId||turn.guesser===myId){ stopP1Timer(); }
-  else { stopP1Timer(); }
+  // Si ya no soy mime ni guesser, asegurar que se muestre observador y se limpie el timer
+  if(turn.mime!==myId && turn.guesser!==myId){ stopP1Timer(); renderP1Zone('obs'); }
 });
 
 socket.on('p1:yourTurn',({role,word,hints})=>{if(role==='mime'){renderP1Zone('mime',word,hints);startP1Timer();}else{renderP1Zone('guess');startP1Timer();}});
