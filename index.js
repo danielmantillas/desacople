@@ -36,8 +36,6 @@ setInterval(() => {
     try {
       const d = JSON.parse(raw);
       if (!d || !d.team || Date.now() - d.ts > 5000) return;
-      const room = io.sockets.adapter.rooms.get('team'+d.team);
-      if (!room || room.size === 0) return;
       io.to('team'+d.team).emit('p1:turnUpdate', {
         team: d.team, turn: d.turn, wordIndex: d.wordIndex,
         scores: d.scores, passes: d.passes
