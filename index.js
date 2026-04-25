@@ -31,7 +31,29 @@ function modFlagActive() { try{ fs.accessSync(MOD_FLAG); return true; }catch(e){
 modFlagClear();
 try { if(fs.existsSync(RESET_FLAG)) fs.unlinkSync(RESET_FLAG); } catch(e){}
 
-// (lobby sync eliminado - un solo proceso Chrome)
+// Lobby sync async — solo para que el moderador vea jugadores de otros procesos
+const LOBBY_FILE = '/tmp/dscp_lobby.json';
+function saveLobbyAsync() {
+  if (gs.phase !== 'lobby') return;
+  const d = JSON.stringify({p:gs.players, a:gs.teamA, b:gs.teamB});
+  fs.writeFile(LOBBY_FILE, d, ()=>{});
+}
+setInterval(() => {
+  if (gs.phase !== 'lobby') return;
+  fs.readFile(LOBBY_FILE, 'utf8', (err, raw) => {
+    if (err || !raw) return;
+    try {
+      const d = JSON.parse(raw);
+      if (!d) return;
+      const remoteLen = Object.keys(d.p||{}).length;
+      const localLen  = Object.keys(gs.players).length;
+      if (remoteLen > localLen) {
+        gs.players = d.p; gs.teamA = d.a; gs.teamB = d.b;
+        io.emit('lobbyUpdate', pubState());
+      }
+    } catch(e){}
+  });
+}, 600);
 
 // Reset cross-proceso
 setInterval(() => {
@@ -295,6 +317,7 @@ io.on('connection', socket => {
         socket.emit('joined', {id:socket.id, isModerator:true, isNew:true});
         socket.emit('restoreState', {phase:'lobby'});
         io.emit('lobbyUpdate', pubState());
+        fs.unlink(LOBBY_FILE, ()=>{});
         console.log('[MOD]', nm);
         return;
       }
@@ -360,6 +383,7 @@ io.on('connection', socket => {
         role:p.role, roleLabel:p.roleLabel, team:p.team, color:p.color, textColor:p.textColor});
       socket.emit('restoreState', {phase:'lobby'});
       io.emit('lobbyUpdate', pubState());
+      saveLobbyAsync();
       console.log('[NEW]', nm, p.team);
 
     } catch(e) { console.error('[JOIN_ERR]', e.message); }
