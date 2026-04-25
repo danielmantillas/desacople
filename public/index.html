@@ -563,43 +563,74 @@ function initP1(){
   if(p){const av=document.getElementById('p1-av');av.style.background=myColor;av.style.color=myTextColor;av.textContent=myInitials;document.getElementById('p1-name').textContent=p.name;document.getElementById('p1-role').textContent=myRoleLabel+' · Equipo '+myTeam;}
   document.getElementById('p1-badge').textContent='Fase 1 · Equipo '+myTeam;
   const tn=document.getElementById('p1-team-name');tn.textContent='Equipo '+myTeam;tn.className=myTeam==='A'?'pna':'pnb';
-  renderProgs(0,0,0,0);renderP1Zone('obs');
+  gs._myIdx=0;gs._rivalIdx=0;renderProgs(0,0,0,0);renderP1Zone('obs');
 }
 
 function renderProgs(dA,dB,sA,sB){
-  const myD=myTeam==='A'?dA:dB,otD=myTeam==='A'?dB:dA,myS=myTeam==='A'?sA:sB,otS=myTeam==='A'?sB:sA;
-  const pm=document.getElementById('prog-my');pm.innerHTML='';
-  const po=document.getElementById('prog-other');po.innerHTML='';
-  const po2=document.getElementById('prog-other2');if(po2)po2.innerHTML='';
+  const myD=myTeam==='A'?dA:dB, otD=myTeam==='A'?dB:dA;
+  const myS=myTeam==='A'?sA:sB, otS=myTeam==='A'?sB:sA;
+  // Dots horizontales para mi equipo
+  const pm=document.getElementById('prog-my'); if(pm){pm.innerHTML=''; pm.style.cssText='display:flex;flex-direction:row;gap:4px;align-items:center;';}
+  const po=document.getElementById('prog-other'); if(po){po.innerHTML=''; po.style.cssText='display:flex;flex-direction:row;gap:4px;align-items:center;';}
   for(let i=0;i<6;i++){
-    pm.appendChild(makePd(i,i<myD?'done':i===myD?'cur':''));
-    po.appendChild(makePd(i,i<otD?'done':i===otD?'cur':''));
-    if(po2){const d=document.createElement('div');d.style.cssText='width:24px;height:24px;border-radius:50%;border:1.5px solid #ddd;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#bbb;margin:0 2px;';if(i<otD){d.style.background='#E1F5EE';d.style.borderColor='#9FE1CB';d.style.color='#085041';}else if(i===otD){d.style.background='#E6F1FB';d.style.borderColor='#B5D4F4';d.style.color='#0C447C';}d.textContent=i+1;po2.appendChild(d);}
+    if(pm) pm.appendChild(makePd(i,i<myD?'done':i===myD?'cur':''));
+    if(po) po.appendChild(makePd(i,i<otD?'done':i===otD?'cur':''));
   }
-  document.getElementById('p1-score').textContent=myS+' pts';
-  const op=document.getElementById('other-pts'),ol=document.getElementById('other-lbl');op.textContent=otS;
-  if(otS>myS){op.style.color='#c0392b';ol.textContent='puntos · van adelante';ol.style.color='#c0392b';}
-  else if(otS<myS){op.style.color='#0F6E56';ol.textContent='puntos · van atrás';ol.style.color='#0F6E56';}
-  else{op.style.color='#1a1a1a';ol.textContent='puntos · empate';ol.style.color='#888';}
+  // Puntaje propio visible
+  const ps=document.getElementById('p1-score'); if(ps) ps.textContent=myS+' pts';
+  const op=document.getElementById('other-pts'),ol=document.getElementById('other-lbl');
+  if(op) op.textContent=otS;
+  if(ol){
+    if(otS>myS){op.style.color='#c0392b';ol.textContent='puntos · van adelante';ol.style.color='#c0392b';}
+    else if(otS<myS){op.style.color='#0F6E56';ol.textContent='puntos · van atrás';ol.style.color='#0F6E56';}
+    else{op.style.color='#1a1a1a';ol.textContent='puntos · empate';ol.style.color='#888';}
+  }
 }
 
 socket.on('p1:turnUpdate',({team,turn,wordIndex,scores,passes})=>{
-  if(team!==myTeam)return;gs.scores=scores;
-  renderProgs(team==='A'?wordIndex:0,team==='B'?wordIndex:0,scores.A,scores.B);
-  const mp=gs.players?.[turn.mime],gp=gs.players?.[turn.guesser];
-  const txt=document.getElementById('p1-turn-txt');if(txt)txt.textContent=(mp?mp.name:'?')+' mima · '+(gp?gp.name:'?')+' adivina';
-  renderQueue(turn);
-  // Si ya no soy mime ni guesser, asegurar que se muestre observador y se limpie el timer
-  if(turn.mime!==myId && turn.guesser!==myId){ stopP1Timer(); renderP1Zone('obs'); }
+  gs.scores=scores;
+  // Actualizar progreso de MI equipo o del rival
+  if(team===myTeam){
+    renderProgs(wordIndex, gs._rivalIdx||0, scores.A, scores.B);
+    const mp=gs.players?.[turn.mime],gp=gs.players?.[turn.guesser];
+    const txt=document.getElementById('p1-turn-txt');if(txt)txt.textContent=(mp?mp.name:'?')+' mima · '+(gp?gp.name:'?')+' adivina';
+    renderQueue(turn);
+    if(turn.mime!==myId && turn.guesser!==myId){ stopP1Timer(); renderP1Zone('obs'); }
+  } else {
+    gs._rivalIdx=wordIndex;
+    renderProgs(gs._myIdx||0, wordIndex, scores.A, scores.B);
+  }
+  updateScores(scores);
 });
 
 socket.on('p1:yourTurn',({role,word,hints})=>{if(role==='mime'){renderP1Zone('mime',word,hints);startP1Timer();}else{renderP1Zone('guess');startP1Timer();}});
 socket.on('p1:emoji',({from,fromName,emoji,team})=>{if(team!==myTeam)return;addChat({color:gs.players?.[from]?.color||'#ddd',tc:gs.players?.[from]?.textColor||'#333',ini:gs.players?.[from]?.initials||'?',tag:'pista',tc2:'rtm',content:'<div class="eb">'+emoji+'</div>'});});
 socket.on('p1:guessResult',({from,guess,correct,team})=>{if(team!==myTeam)return;addChat({color:gs.players?.[from]?.color||'#ddd',tc:gs.players?.[from]?.textColor||'#333',ini:gs.players?.[from]?.initials||'?',tag:'intento',tc2:'rtg',content:correct?'<span class="gok">¡'+guess+'! ✓</span>':'<span class="gtry">'+guess+'</span>'});});
-socket.on('p1:wordGuessed',({team,wordNum,by,scores})=>{if(team!==myTeam)return;addChat({sys:true,content:'Palabra '+wordNum+' adivinada por <b>'+by+'</b> ✓'});gs.scores=scores;});
+socket.on('p1:wordGuessed',({team,wordNum,by,scores})=>{
+  gs.scores=scores; updateScores(scores);
+  if(team===myTeam){
+    gs._myIdx=wordNum;
+    addChat({sys:true,content:'Palabra '+wordNum+' adivinada por <b>'+by+'</b> ✓'});
+    renderProgs(wordNum, gs._rivalIdx||0, scores.A, scores.B);
+  } else {
+    gs._rivalIdx=wordNum;
+    renderProgs(gs._myIdx||0, wordNum, scores.A, scores.B);
+  }
+});
 socket.on('p1:wordRevealed',({word,index})=>{const list=document.getElementById('p1-uni-words');if(!list)return;const items=list.querySelectorAll('span');if(items[index]){items[index].textContent=word;items[index].className='uni-w';}});
 socket.on('p1:hint',({hint,idx})=>{const el=document.getElementById('hint-disp');if(el){el.textContent='💡 '+hint;el.className='hint-txt';el.style.display='inline-block';}for(let i=0;i<=idx;i++){const b=document.getElementById('hb'+i);if(b)b.disabled=true;}});
-socket.on('p1:teamDone',({team,scores})=>{gs.scores=scores;notif(team===myTeam?'¡Tu equipo terminó la Fase 1!':'El equipo rival terminó la Fase 1');});
+socket.on('p1:teamDone',({team,scores,words})=>{
+  gs.scores=scores; updateScores(scores);
+  if(team===myTeam){
+    notif('¡Tu equipo terminó la Fase 1! 🎉',4000);
+  }
+});
+socket.on('p1:rivalDone',({team,scores})=>{
+  gs.scores=scores; updateScores(scores);
+  if(team!==myTeam){
+    notif('⚡ El equipo rival terminó la Fase 1 — esperando al moderador',5000);
+  }
+});
 socket.on('scores',s=>{gs.scores=s;updateScores(s);});
 socket.on('p1:rivalProgress',({team,count})=>{
   if(team===myTeam)return;
@@ -614,7 +645,7 @@ socket.on('p1:modUpdate',({team,mimeName,guesserName,word,idx,scores})=>{
 });
 socket.on('p1:timerReset',()=>{stopP1Timer();startP1Timer();});
 
-function updateScores(s){const myS=myTeam==='A'?s.A:s.B;['p1-score','p2-score','p3-score'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=myS+' pts';});}
+function updateScores(s){if(!s)return;const myS=myTeam==='A'?s.A:s.B;['p1-score','p2-score','p3-score'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=myS+' pts';});}
 function startP1Timer(){p1Time=60;if(p1Timer)clearInterval(p1Timer);updP1Timer();p1Timer=setInterval(()=>{p1Time--;updP1Timer();if(p1Time<=0)stopP1Timer();},1000);}
 function stopP1Timer(){if(p1Timer){clearInterval(p1Timer);p1Timer=null;}}
 function updP1Timer(){const el=document.getElementById('p1-timer'),bar=document.getElementById('p1-tbar');el.textContent='0:'+(p1Time<10?'0':'')+p1Time;el.className='timer-b '+(p1Time<=10?'thot':'tok');if(bar)bar.style.width=(p1Time/60*100)+'%';}
