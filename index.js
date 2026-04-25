@@ -31,6 +31,36 @@ function modFlagActive() { try{ fs.accessSync(MOD_FLAG); return true; }catch(e){
 modFlagClear();
 try { if(fs.existsSync(RESET_FLAG)) fs.unlinkSync(RESET_FLAG); } catch(e){}
 
+// Lobby sync: guarda y lee la lista de jugadores en segundo plano
+const LOBBY_FILE = '/tmp/dscp_lobby.json';
+let _lobbyWt = null, _lastLobby = '';
+function saveLobbyAsync() {
+  if (gs.phase !== 'lobby') return;
+  if (_lobbyWt) clearTimeout(_lobbyWt);
+  _lobbyWt = setTimeout(() => {
+    try {
+      const d = JSON.stringify({p:gs.players, a:gs.teamA, b:gs.teamB});
+      fs.writeFile(LOBBY_FILE, d, ()=>{});
+    } catch(e){}
+  }, 150);
+}
+setInterval(() => {
+  if (gs.phase !== 'lobby') return;
+  try {
+    const raw = fs.readFileSync(LOBBY_FILE, 'utf8');
+    if (raw === _lastLobby) return;
+    _lastLobby = raw;
+    const d = JSON.parse(raw);
+    if (!d) return;
+    const remoteLen = Object.keys(d.p||{}).length;
+    const localLen  = Object.keys(gs.players).length;
+    if (remoteLen > localLen) {
+      gs.players = d.p; gs.teamA = d.a; gs.teamB = d.b;
+      io.emit('lobbyUpdate', pubState());
+    }
+  } catch(e){}
+}, 400);
+
 // ─── PALABRAS ─────────────────────────────────────────────────────────────────
 const WORDS = [
   { w:'ecosistema',    h:['todo está conectado','red de vida interdependiente','empieza con E','9 letras'] },
@@ -362,6 +392,7 @@ io.on('connection', socket => {
       }
       socket.emit('restoreState', {phase:'lobby'});
       io.emit('lobbyUpdate', pubState());
+      saveLobbyAsync();
       console.log('[NEW]', nm, gs.players[socket.id]?.team||'mod');
 
     } catch(e) { console.error('[JOIN_ERR]', e.message); }
