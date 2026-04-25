@@ -42,13 +42,15 @@ setInterval(() => {
         team: d.team, turn: d.turn, wordIndex: d.wordIndex,
         scores: d.scores, passes: d.passes
       });
+      // Sincronizar guessed arrays para evitar palabras repetidas
+      if (d.guessedA) gs.p1.guessedA = d.guessedA;
+      if (d.guessedB) gs.p1.guessedB = d.guessedB;
       for (const [sid, sock] of io.sockets.sockets) {
         const p = gs.players[sid];
         if (!p) continue;
         if (p.name === d.mimeName)    sock.emit('p1:yourTurn', { role: 'mime',    word: d.word, hints: d.hints });
         if (p.name === d.guesserName) sock.emit('p1:yourTurn', { role: 'guesser' });
       }
-      // ← NUEVO: enviar progreso rival al equipo contrario
       const rivalTeam = d.team === 'A' ? 'B' : 'A';
       io.to('team'+rivalTeam).emit('p1:rivalProgress', { team: d.team, count: d.wordIndex });
     } catch(e) {}
@@ -313,6 +315,7 @@ function startTurn(team) {
     mimeName:    gs.players[turn.mime]?.name,
     guesserName: gs.players[turn.guesser]?.name,
     wordIndex: guessed.length, scores: gs.scores, passes,
+    guessedA: gs.p1.guessedA, guessedB: gs.p1.guessedB,
     ts: Date.now()
   }), () => {});
 }
