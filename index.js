@@ -14,6 +14,7 @@ const RESET_FLAG   = '/tmp/dscp_reset';      // señal reset (cross-proceso)
 const LOBBY_FILE   = '/tmp/dscp_lobby.json'; // lobby sync (cross-proceso)
 const PHASE_FILE   = '/tmp/dscp_phase.json'; // señal startGame (cross-proceso)
 const TURN_FILE    = '/tmp/dscp_turn.json';  // señal cambio de turno (cross-proceso)
+const FINISH_FILE  = '/tmp/dscp_finish.json'; // señal fin fase 1 (cross-proceso)
 
 // ─── SERVIDOR ────────────────────────────────────────────────────────────────
 const app    = express();
@@ -54,10 +55,24 @@ setInterval(() => {
         if (p.name === d.mimeName)    sock.emit('p1:yourTurn', { role: 'mime',    word: d.word, hints: d.hints });
         if (p.name === d.guesserName) sock.emit('p1:yourTurn', { role: 'guesser' });
       }
+      // Actualizar progreso del equipo rival para el equipo contrario
+      const rivalTeam = d.team === 'A' ? 'B' : 'A';
+      io.to('team'+rivalTeam).emit('p1:rivalProgress', { team: d.team, count: d.wordIndex });
     } catch(e) {}
   });
 
-  // 1. Reset signal
+  // 1. Finish signal (fin de fase 1 desde otro proceso)
+  fs.readFile(FINISH_FILE, 'utf8', (err, raw) => {
+    if (err || !raw) return;
+    try {
+      const d = JSON.parse(raw);
+      if (!d || !d.team || Date.now()-d.ts > 10000) return;
+      io.emit('p1:teamDone',  { team: d.team, scores: d.scores, words: d.words });
+      io.emit('p1:rivalDone', { team: d.team, scores: d.scores });
+    } catch(e){}
+  });
+
+  // 2. Reset signal
   fs.readFile(RESET_FLAG, (err) => {
     if (err) return;
     fs.unlink(RESET_FLAG, () => {});
@@ -351,6 +366,7 @@ function finishP1Team(team) {
   const words = team === 'A' ? gs.p1.guessedA : gs.p1.guessedB;
   io.emit('p1:teamDone',  { team, scores: gs.scores, words });
   io.emit('p1:rivalDone', { team, scores: gs.scores });
+  fs.writeFile(FINISH_FILE, JSON.stringify({ team, scores: gs.scores, words, ts: Date.now() }), () => {});
   if (gs.p1.finA && gs.p1.finB) {
     gs.phase = 'phase2';
     io.emit('phaseChange', { phase: 'phase1Done', scores: gs.scores });
@@ -451,7 +467,7 @@ io.on('connection', socket => {
         gs = makeState();
         gs.modActive = true;
         modFlagSet();
-        [LOBBY_FILE, PHASE_FILE, TURN_FILE].forEach(f => { try { fs.unlinkSync(f); } catch(e){} });
+        [LOBBY_FILE, PHASE_FILE, TURN_FILE, FINISH_FILE].forEach(f => { try { fs.unlinkSync(f); } catch(e){} });
         // Registrar
         const ini = nm.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
         gs.players[socket.id] = {
@@ -755,7 +771,7 @@ io.on('connection', socket => {
     gs.modActive = true;
     modFlagSet();
     try { fs.writeFileSync(RESET_FLAG, '1'); } catch(e){} // sync: otros procesos lo ven de inmediato
-    [LOBBY_FILE, PHASE_FILE, TURN_FILE].forEach(f => { try { fs.unlinkSync(f); } catch(e){} });
+    [LOBBY_FILE, PHASE_FILE, TURN_FILE, FINISH_FILE].forEach(f => { try { fs.unlinkSync(f); } catch(e){} });
     io.emit('reset');
     console.log('[RESET]');
   });
