@@ -49,15 +49,25 @@ function diskLoad() {
   } catch(e) { return null; }
 }
 
-// ─── HEARTBEAT ───────────────────────────────────────────────────────────────
-function hbWrite()  { try { fs.writeFileSync(HB_FILE, String(Date.now())); } catch(e){} }
-function hbClear()  { try { if (fs.existsSync(HB_FILE)) fs.unlinkSync(HB_FILE); } catch(e){} }
-function hbActive() {
+// ─── MODERADOR ACTIVO ────────────────────────────────────────────────────────
+// Verificar si hay moderador activo: en memoria O en disco reciente
+function hbWrite()  { /* no-op: usamos diskSaveSync */ }
+function hbClear()  { /* no-op */ }
+function hbActive() { return gs.modActive; } // Solo memoria — ver isModActive()
+function isModActive() {
+  if (gs.modActive) return true;
+  // Verificar disco: estado guardado en los últimos 120 segundos con modActive
   try {
-    if (!fs.existsSync(HB_FILE)) return false;
-    return (Date.now() - parseInt(fs.readFileSync(HB_FILE,'utf8'))) < 90000;
+    if (!fs.existsSync(STATE_FILE)) return false;
+    const age = Date.now() - fs.statSync(STATE_FILE).mtimeMs;
+    if (age > 120000) return false; // más de 2 minutos = sesión vieja
+    const d = JSON.parse(fs.readFileSync(STATE_FILE,'utf8'));
+    return !!(d && d.modActive && d.phase === 'lobby');
   } catch(e) { return false; }
 }
+
+// Limpiar estado viejo al arrancar
+try{ if(fs.existsSync(STATE_FILE)){const _d=JSON.parse(fs.readFileSync(STATE_FILE,'utf8'));if(!_d||!_d.modActive)fs.unlinkSync(STATE_FILE);} }catch(e){}
 
 // ─── RELAY TIEMPO REAL ────────────────────────────────────────────────────────
 let lastEvtHash = '';
@@ -122,11 +132,12 @@ lastStateHash = (() => {
     if (!fs.existsSync(STATE_FILE)) return '';
     const raw = fs.readFileSync(STATE_FILE,'utf8');
     const d   = JSON.parse(raw);
-    if (d && d.modActive && d.phase === 'lobby' && hbActive()) {
-      gs = d; console.log('[INIT] lobby activo cargado'); return raw;
+    if (d && d.modActive && d.phase === 'lobby') {
+      gs = d; gs.modActive = false; // mod debe reconectar
+      console.log('[INIT] lobby previo cargado, esperando moderador'); return raw;
     }
     try { fs.unlinkSync(STATE_FILE); } catch(e){}
-    hbClear();
+    
     return '';
   } catch(e) { return ''; }
 })();
@@ -201,7 +212,7 @@ setInterval(() => {
   } catch(e){}
 }, 200);
 
-setInterval(() => { if (gs.modActive) hbWrite(); }, 30000);
+// (heartbeat eliminado, se usa estado en disco)
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 function shuffle(a){const r=[...a];for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
@@ -357,7 +368,7 @@ io.on('connection', socket => {
         gs.teamB=gs.teamB.map(id=>id===oid?socket.id:id);
         if(gs.moderatorId===oid)gs.moderatorId=socket.id;
         const p=gs.players[socket.id];
-        if(isModerator){socket.join('moderator');hbWrite();socket.emit('joined',{id:socket.id,isModerator:true,isNew:false});}
+        if(isModerator){socket.join('moderator');socket.emit('joined',{id:socket.id,isModerator:true,isNew:false});}
         else{socket.join('team'+p.team);socket.emit('joined',{id:socket.id,isModerator:false,isNew:false,role:p.role,roleLabel:p.roleLabel,team:p.team,color:p.color,textColor:p.textColor});}
         const ph=gs.phase;
         if(ph==='lobby') socket.emit('restoreState',{phase:'lobby'});
@@ -385,17 +396,16 @@ io.on('connection', socket => {
         if(password!==MOD_PASSWORD){socket.emit('joinError',{msg:'Contraseña incorrecta.'});return;}
         [gs.p1.timerA,gs.p1.timerB,gs.p3.timerA,gs.p3.timerB].forEach(t=>{if(t)clearTimeout(t);});
         gs=makeState(); gs.modActive=true;
-        diskSaveSync(); hbWrite();
+        diskSaveSync();
         try{fs.writeFileSync(EVT_FILE,'[]');}catch(e){}
       } else {
         // Verificar moderador activo: memoria O heartbeat
-        if(!gs.modActive&&!hbActive()){
+        if(!isModActive()){
           socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que abra la sala.'});return;
         }
         if(!gs.modActive){
           const fresh=diskLoad();
           if(fresh&&fresh.phase==='lobby'&&fresh.modActive){gs=fresh;}
-          else{socket.emit('joinError',{msg:'Aún no hay moderador. Espera a que abra la sala.'});return;}
         }
         if(gs.phase!=='lobby'){socket.emit('joinError',{msg:'El juego ya inició.'});return;}
         if(Object.values(gs.players).some(p=>p.name===nm&&!p.isModerator)){
@@ -559,7 +569,7 @@ io.on('connection', socket => {
     if(socket.id!==gs.moderatorId)return;
     [gs.p1.timerA,gs.p1.timerB,gs.p3.timerA,gs.p3.timerB].forEach(t=>{if(t)clearTimeout(t);});
     gs=makeState(); gs.modActive=true;
-    diskSaveSync(); hbWrite();
+    diskSaveSync();
     try{fs.writeFileSync(STATE_FILE+'.reset',String(Date.now()));}catch(e){}
     try{fs.writeFileSync(EVT_FILE,'[]');}catch(e){}
     io.emit('reset'); console.log('[RESET]');
@@ -572,7 +582,7 @@ io.on('connection', socket => {
       delete gs.players[sid];
       gs.teamA=gs.teamA.filter(id=>id!==sid);
       gs.teamB=gs.teamB.filter(id=>id!==sid);
-      if(wasMod){gs.modActive=false;hbClear();console.log('[MOD OFF]');}
+      if(wasMod){gs.modActive=false;console.log('[MOD OFF]');}
       diskSave(); io.emit('lobbyUpdate',pubState());
     },5000);
   });
