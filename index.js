@@ -5,6 +5,32 @@ const { Server } = require('socket.io');
 const path    = require('path');
 const fs      = require('fs');
 
+// ─── SINGLE PROCESS GUARD ────────────────────────────────────────────────────
+// Si PM2 lanza múltiples workers, solo el primero en obtener el lock sobrevive.
+const PID_FILE = '/tmp/dscp_pid';
+(function enforceSingleProcess() {
+  try {
+    if (fs.existsSync(PID_FILE)) {
+      const oldPid = parseInt(fs.readFileSync(PID_FILE, 'utf8'));
+      // Verificar si el proceso anterior sigue vivo
+      try {
+        process.kill(oldPid, 0); // 0 = solo verificar, no matar
+        // Si llegamos aquí, el proceso existe — este es un duplicado, salir
+        console.log('[GUARD] Proceso duplicado detectado (PID '+oldPid+' activo). Saliendo.');
+        process.exit(0);
+      } catch(e) {
+        // El proceso anterior murió — tomar el lock
+      }
+    }
+    fs.writeFileSync(PID_FILE, String(process.pid));
+    // Limpiar al salir
+    process.on('exit', () => { try{fs.unlinkSync(PID_FILE);}catch(e){} });
+    process.on('SIGTERM', () => { try{fs.unlinkSync(PID_FILE);}catch(e){} process.exit(0); });
+    process.on('SIGINT',  () => { try{fs.unlinkSync(PID_FILE);}catch(e){} process.exit(0); });
+    console.log('[GUARD] Proceso único activo, PID:', process.pid);
+  } catch(e) { console.error('[GUARD]', e.message); }
+})();
+
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 const MOD_PASSWORD = 'desacople2025';
 const TURN_MS      = 30000;   // 30s Fase 1
