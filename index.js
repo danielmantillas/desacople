@@ -76,6 +76,11 @@ setInterval(() => {
   fs.readFile(RESET_FLAG, (err) => {
     if (err) return;
     fs.unlink(RESET_FLAG, () => {});
+    // Limpiar estado en este proceso también
+    [gs.p1.timerA,gs.p1.timerB,gs.p3?.timerA,gs.p3?.timerB].forEach(t=>{if(t)clearTimeout(t);});
+    gs = makeState();
+    gs.modActive = true; // mod sigue activo
+    [LOBBY_FILE, PHASE_FILE, TURN_FILE, FINISH_FILE].forEach(f => { try { fs.unlinkSync(f); } catch(e){} });
     io.emit('reset');
   });
 
