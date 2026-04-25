@@ -448,7 +448,7 @@ textarea{resize:none;line-height:1.5;}
 </div>
 
 <script>
-const socket=io({transports:['polling'],reconnection:true,reconnectionDelay:2000});
+const socket=io({transports:['websocket','polling'],reconnection:true,reconnectionDelay:2000});
 socket.on('connect_error',e=>console.warn('[socket]',e.message));
 let myId=null,myName='',myRole=null,myRoleLabel='',myTeam=null,myColor='#ddd',myTextColor='#333',myInitials='',isMod=false;
 let gs={},p1Timer=null,p1Time=30,p2Timer=null,p2Time=180,p3Timer=null,p3Time=60;
@@ -502,7 +502,7 @@ socket.on('restoreState',(data)=>{
     if(isMod)showScreen('s-lobby');
     else if(window._joinIsNew)showRoleScreen(myRole,myRoleLabel,myTeam,myColor,myTextColor);
     else{showScreen('s-lobby');renderMyRoleBanner();}
-  } else if(data.phase==='phase1'){showScreen('s-lobby');renderMyRoleBanner();initP1();}
+  } else if(data.phase==='phase1'){if(isMod)showScreen('s-lobby');else{showScreen('s-lobby');renderMyRoleBanner();initP1();}}
   else if(data.phase==='phase2'){initP2(data.timeA,data.timeB,data.wordsA,data.wordsB);}
   else if(data.phase==='phase3'){showScreen('s-lobby');renderMyRoleBanner();initP3();}
 });
@@ -547,7 +547,7 @@ function startGame(){socket.emit('startGame');}
 
 socket.on('phaseChange',({phase,state,scores,timeA,timeB,wordsA,wordsB})=>{
   if(state)gs=state;
-  if(phase==='phase1'){if(!document.getElementById('s-p1').classList.contains('active'))initP1();return;}
+  if(phase==='phase1'){if(!isMod&&!document.getElementById('s-p1').classList.contains('active'))initP1();return;}
   if(phase==='phase1Done'){showP1Fin(scores);return;}
   if(phase==='phase1Done'){showP1Fin(scores);return;}
   if(phase==='phase2'){initP2(timeA,timeB,wordsA,wordsB);return;}
