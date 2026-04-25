@@ -30,7 +30,58 @@ modFlagClear();
 [RESET_FLAG, LOBBY_FILE, PHASE_FILE, FINISH_FILE].forEach(f => { try { fs.unlinkSync(f); } catch(e){} }); // ← limpia FINISH_FILE al arrancar
 
 setInterval(() => {
-  // 0. Turn signal
+  // Reset signal
+  fs.readFile(RESET_FLAG, (err) => {
+    if (err) return;
+    fs.unlink(RESET_FLAG, () => {});
+    [gs.p1?.timerA,gs.p1?.timerB,gs.p3?.timerA,gs.p3?.timerB].forEach(t=>{if(t)clearTimeout(t);});
+    gs = makeState(); gs.modActive = true;
+    io.emit('reset');
+  });
+
+  // Phase signal (startGame)
+  fs.readFile(PHASE_FILE, 'utf8', (err, raw) => {
+    if (err || !raw) return;
+    fs.unlink(PHASE_FILE, () => {});
+    try {
+      const d = JSON.parse(raw);
+      if (!d || d.phase !== 'phase1') return;
+      const nameToLocal = {};
+      Object.entries(gs.players).forEach(([id, p]) => {
+        if (!p.isModerator) nameToLocal[p.name] = id;
+      });
+      gs.players=d.players; gs.teamA=d.teamA; gs.teamB=d.teamB;
+      gs.scores=d.scores; gs.phase='phase1'; gs.p1=d.p1; gs.modActive=true;
+      const idRemap = {};
+      Object.entries(gs.players).forEach(([remoteId, p]) => {
+        const localId = nameToLocal[p.name];
+        if (localId) idRemap[remoteId] = localId;
+      });
+      if (Object.keys(idRemap).length > 0) {
+        const np = {};
+        Object.entries(gs.players).forEach(([id, p]) => {
+          const nid = idRemap[id] || id;
+          np[nid] = { ...p, id: nid };
+        });
+        gs.players = np;
+        gs.teamA = gs.teamA.map(id => idRemap[id] || id);
+        gs.teamB = gs.teamB.map(id => idRemap[id] || id);
+        ['queueA','queueB'].forEach(q => { if (gs.p1[q]) gs.p1[q] = gs.p1[q].map(id => idRemap[id] || id); });
+        ['turnA','turnB'].forEach(t => {
+          if (gs.p1[t]) {
+            gs.p1[t].mime    = idRemap[gs.p1[t].mime]    || gs.p1[t].mime;
+            gs.p1[t].guesser = idRemap[gs.p1[t].guesser] || gs.p1[t].guesser;
+          }
+        });
+      }
+      io.emit('phaseChange', { phase: 'phase1', state: pubState() });
+      setTimeout(() => sendTurnsToLocalSockets(), 300);
+    } catch(e) { console.error('[PHASE_FILE]', e.message); }
+  });
+}, 200);
+
+setInterval(() => {
+  // Turn signal
   fs.readFile(TURN_FILE, 'utf8', (err, raw) => {
     if (err || !raw) return;
     try {
@@ -40,7 +91,6 @@ setInterval(() => {
         team: d.team, turn: d.turn, wordIndex: d.wordIndex,
         scores: d.scores, passes: d.passes
       });
-      // Sincronizar guessed arrays para evitar palabras repetidas
       if (d.guessedA) gs.p1.guessedA = d.guessedA;
       if (d.guessedB) gs.p1.guessedB = d.guessedB;
       for (const [sid, sock] of io.sockets.sockets) {
@@ -54,63 +104,7 @@ setInterval(() => {
     } catch(e) {}
   });
 
-  // 1. Reset signal
-  fs.readFile(RESET_FLAG, (err) => {
-    if (err) return;
-    fs.unlink(RESET_FLAG, () => {});
-    [gs.p1?.timerA,gs.p1?.timerB,gs.p3?.timerA,gs.p3?.timerB].forEach(t=>{if(t)clearTimeout(t);});
-    gs = makeState(); gs.modActive = true; // limpiar estado en este proceso
-    io.emit('reset');
-  });
-
-  // 2. Phase signal
-  fs.readFile(PHASE_FILE, 'utf8', (err, raw) => {
-    if (err || !raw) return;
-    fs.unlink(PHASE_FILE, () => {});
-    try {
-      const d = JSON.parse(raw);
-      if (!d || d.phase !== 'phase1') return;
-      const nameToLocal = {};
-      Object.entries(gs.players).forEach(([id, p]) => {
-        if (!p.isModerator) nameToLocal[p.name] = id;
-      });
-      gs.players  = d.players;
-      gs.teamA    = d.teamA;
-      gs.teamB    = d.teamB;
-      gs.scores   = d.scores;
-      gs.phase    = 'phase1';
-      gs.p1       = d.p1;
-      gs.modActive = true;
-      const idRemap = {};
-      Object.entries(gs.players).forEach(([remoteId, p]) => {
-        const localId = nameToLocal[p.name];
-        if (localId) idRemap[remoteId] = localId;
-      });
-      if (Object.keys(idRemap).length > 0) {
-        const np = {};
-        Object.entries(gs.players).forEach(([id, p]) => {
-          const nid = idRemap[id] || id;
-          np[nid] = { ...p, id: nid };
-        });
-        gs.players = np;
-        gs.teamA   = gs.teamA.map(id => idRemap[id] || id);
-        gs.teamB   = gs.teamB.map(id => idRemap[id] || id);
-        ['queueA','queueB'].forEach(q => {
-          if (gs.p1[q]) gs.p1[q] = gs.p1[q].map(id => idRemap[id] || id);
-        });
-        ['turnA','turnB'].forEach(t => {
-          if (gs.p1[t]) {
-            gs.p1[t].mime    = idRemap[gs.p1[t].mime]    || gs.p1[t].mime;
-            gs.p1[t].guesser = idRemap[gs.p1[t].guesser] || gs.p1[t].guesser;
-          }
-        });
-      }
-      io.emit('phaseChange', { phase: 'phase1', state: pubState() });
-      setTimeout(() => sendTurnsToLocalSockets(), 500);
-    } catch(e) { console.error('[PHASE_FILE]', e.message); }
-  });
-
-  // 3. Finish signal ← NUEVO
+  // Finish signal
   fs.readFile(FINISH_FILE, 'utf8', (err, raw) => {
     if (err || !raw) return;
     try {
@@ -121,7 +115,7 @@ setInterval(() => {
     } catch(e) {}
   });
 
-  // 4. Lobby sync
+  // Lobby sync
   if (gs.phase !== 'lobby') return;
   fs.readFile(LOBBY_FILE, 'utf8', (err, raw) => {
     if (err || !raw) return;
@@ -131,9 +125,7 @@ setInterval(() => {
       const remoteCount = Object.keys(d.p || {}).length;
       const localCount  = Object.keys(gs.players).length;
       if (remoteCount > localCount) {
-        gs.players = d.p;
-        gs.teamA   = d.a;
-        gs.teamB   = d.b;
+        gs.players = d.p; gs.teamA = d.a; gs.teamB = d.b;
         io.emit('lobbyUpdate', pubState());
       }
     } catch(e) {}
